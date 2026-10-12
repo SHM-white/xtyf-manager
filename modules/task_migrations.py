@@ -127,13 +127,13 @@ def migrate(db: sqlite3.Connection) -> None:
                     db.execute("INSERT OR IGNORE INTO task_groups VALUES (?, ?)", (task_id, group_id))
                 if project_id is not None:
                     db.execute("UPDATE tasks SET project_id = COALESCE(project_id, ?) WHERE id = ?", (project_id, task_id))
-            db.execute("INSERT INTO schema_migrations(version, applied_at) VALUES (1, ?)", (now_str(),))
+            db.execute("INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (1, ?)", (now_str(),))
         # Seed exactly once so future administrator renames never get reverted.
         if db.execute("SELECT 1 FROM schema_migrations WHERE version=2").fetchone() is None:
             _upgrade_composite_groups(db)
             db.executemany("INSERT OR IGNORE INTO groups(name) VALUES (?)",
                            ((name,) for name in DEFAULT_GROUPS))
-            db.execute("INSERT INTO schema_migrations(version, applied_at) VALUES (2, ?)", (now_str(),))
+            db.execute("INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (2, ?)", (now_str(),))
         db.commit()
     except sqlite3.Error:
         db.rollback()
