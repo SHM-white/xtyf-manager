@@ -2,8 +2,8 @@
 {% extends "base.html" %}
 {% block title %}看板{% endblock %}
 {% block content %}
-<div class="page-intro">
-  <div><h1>任务总览</h1><p>查看任务进展，及时发现阻塞与逾期。</p></div>
+<div class="page-intro ux-page-head">
+  <div><p class="ux-eyebrow">OPERATIONS / OVERVIEW</p><h1>任务总览</h1><p>以负责人和状态为线索，快速定位风险与下一步工作。</p></div>
   <div class="sync-tools"><span id="sync-status" class="sync-status" role="status" aria-live="polite">正在同步…</span>
     <button id="refresh-now" class="btn" type="button">立即刷新</button></div>
 </div>
@@ -17,7 +17,7 @@
   <select id="f-status"><option value="">全部状态</option></select>
   <input id="f-q" type="search" aria-label="搜索任务" placeholder="搜索任务 / 负责人 / 项目">
   <label class="check"><input type="checkbox" id="f-mine"> 只看我的</label>
-  <span class="hint">每 5 秒自动刷新</span>
+  <span class="hint">自动同步 · 5 秒</span>
 </section>
 <section id="board" class="board"></section>
 {% endblock %}

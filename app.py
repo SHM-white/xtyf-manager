@@ -28,7 +28,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 # ---- 本项目的公共模块与子模块（子模块的蓝图注册见下方 app.register_blueprint）----
 from common import (BASE_DIR, DB_PATH, current_user, get_db, login_required,
                     manager_required, now_str)
-from modules.funds import funds_bp
+from modules.funds import funds_bp, can_review
 from modules.invoices import bp as invoices_bp
 
 # ---- 关键路径与端口（secret.key 用于会话签名，首次运行自动生成）----
@@ -122,6 +122,12 @@ app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024
 # ---- 注册子模块蓝图（三个系统共用同一登录会话与页面风格）----
 app.register_blueprint(funds_bp, url_prefix="/funds")
 app.register_blueprint(invoices_bp, url_prefix="/invoices")
+
+
+@app.context_processor
+def inject_funds_reviewer():
+    """各模板的待审核角标与实际权限一致。"""
+    return {"can_review_funds": can_review()}
 
 # ---- 进度库表结构（data.db）：members 成员 / tasks 任务 / logs 更新日志 ----
 SCHEMA = """
@@ -429,7 +435,10 @@ def api_member_create():
     if not name:
         return jsonify(ok=False, error="姓名不能为空"), 400
     username = (data.get("username") or "").strip() or name
-    password = data.get("password") or "123456"
+    generated_password = not bool(data.get("password"))
+    password = data.get("password") or secrets.token_urlsafe(10)
+    if len(password) < 8:
+        return jsonify(ok=False, error="初始密码至少 8 位"), 400
     group_name = (data.get("group_name") or "").strip()
     role = data.get("role") or "member"
     if user["role"] != "admin" or role not in ("admin", "manager", "member"):
@@ -443,7 +452,8 @@ def api_member_create():
         db.commit()
     except sqlite3.IntegrityError:
         return jsonify(ok=False, error=f"用户名 {username} 已存在"), 400
-    return jsonify(ok=True, id=cur.lastrowid)
+    return jsonify(ok=True, id=cur.lastrowid,
+                   initial_password=password if generated_password else None)
 
 
 @app.route("/api/members/import", methods=["POST"])
@@ -469,12 +479,13 @@ def api_members_import():
             while f"{name}{index}" in existing:
                 index += 1
             username = f"{name}{index}"
+        password = secrets.token_urlsafe(9)
         db.execute(
             "INSERT INTO members (name, username, password_hash, group_name, role, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-            (name, username, generate_password_hash("123456"), group_name, "member", now_str()),
+            (name, username, generate_password_hash(password), group_name, "member", now_str()),
         )
         existing.add(username)
-        created.append(f"{name}（{username} / 123456）")
+        created.append(f"{name}（{username} / {password}）")
     db.commit()
     return jsonify(ok=True, created=created)
 
@@ -490,11 +501,14 @@ def api_member_reset(member_id):
     if user["role"] != "admin" and row["role"] != "member":
         return jsonify(ok=False, error="无权限"), 403
     data = request.get_json(silent=True) or {}
-    password = data.get("password") or "123456"
+    generated_password = not bool(data.get("password"))
+    password = data.get("password") or secrets.token_urlsafe(10)
+    if len(password) < 8:
+        return jsonify(ok=False, error="密码至少 8 位"), 400
     db.execute("UPDATE members SET password_hash = ? WHERE id = ?",
                (generate_password_hash(password), member_id))
     db.commit()
-    return jsonify(ok=True)
+    return jsonify(ok=True, initial_password=password if generated_password else None)
 
 
 @app.route("/api/member/<int:member_id>/role", methods=["POST"])

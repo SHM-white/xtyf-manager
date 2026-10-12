@@ -4,13 +4,14 @@
 {% block content %}
 <div class="login-wrap">
   <form id="login-form" class="login-card">
-    <h1>巡天御风管理系统</h1>
+    <p class="ux-eyebrow">TEAM WORKSPACE</p>
+    <h1>巡天御风管理平台</h1>
     <p class="sub">南京航空航天大学 · 巡天御风机甲战队</p>
     <label>用户名
-      <input name="username" autocomplete="username" required autofocus>
+      <input name="username" autocomplete="username" required autofocus placeholder="请输入用户名">
     </label>
     <label>密码
-      <input name="password" type="password" autocomplete="current-password" required>
+      <input name="password" type="password" autocomplete="current-password" required placeholder="请输入密码">
     </label>
     <button class="btn primary block" type="submit">登录</button>
     <p class="error hidden" id="login-error"></p>

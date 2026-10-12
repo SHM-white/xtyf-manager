@@ -9,58 +9,13 @@
       onerror="this.onerror=null;this.href='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css'">
 <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css"
       onerror="this.onerror=null;this.href='https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css'">
-<style>
-:root { --accent: #2563eb; --gold: #f0c060; --bg: #f2f4f8; }
-* { box-sizing: border-box; }
-body { background: var(--bg); font-family: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; }
-.topbar { display: flex; align-items: center; gap: 16px; padding: 10px 18px; background: #0f172a; color: #e2e8f0; position: sticky; top: 0; z-index: 50; flex-wrap: wrap; }
-.topbar .brand { font-weight: 700; font-size: 16px; letter-spacing: .5px; }
-.topbar .brand span { color: #7dd3fc; font-weight: 400; }
-.topbar .nav { display: flex; gap: 4px; flex: 1; }
-.topbar .nav a { color: #cbd5e1; padding: 6px 12px; border-radius: 8px; text-decoration: none; font-size: 14px; transition: background .15s; }
-.topbar .nav a:hover { background: rgba(255, 255, 255, .08); }
-.topbar .nav a.active { background: rgba(125, 211, 252, .18); color: #7dd3fc; }
-.topbar .userbox { display: flex; align-items: center; gap: 10px; }
-.topbar .userbox .who { color: #94a3b8; font-size: 13px; }
-.topbar .userbox a.toplink { color: #fff; border: 1px solid rgba(255, 255, 255, .45); border-radius: 8px; padding: 4px 10px; font-size: 13px; text-decoration: none; }
-.topbar .userbox a.toplink:hover { background: rgba(255, 255, 255, .12); }
-.page-head { background: #fff; border-bottom: 1px solid #e3e7ee; padding: 12px 26px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.page-head h1 { font-size: 18px; font-weight: 700; margin: 0; }
-.nav-badge { background: #ef4444; color: #fff; border-radius: 999px; font-size: 11px; padding: 0 6px; margin-left: 6px; display: inline-block; line-height: 1.7; vertical-align: middle; }
-.badge-pending { background: #fff1f0; color: #d93025; font-size: 12px; padding: 2px 8px; border-radius: 4px; }
-.badge-ok { background: #e6f7e6; color: #52c41a; font-size: 12px; padding: 2px 8px; border-radius: 4px; }
-.card { background: #fff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); margin-bottom: 20px; }
-.card-header { background: #fff; border-bottom: 1px solid #f0f0f0; font-weight: 600; padding: 12px 18px; border-radius: 12px 12px 0 0 !important; }
-.stat-card { text-align: center; padding: 18px 10px; }
-.stat-card .value { font-size: 24px; font-weight: 700; }
-.stat-card .label { color: #8c8c8c; font-size: 12px; margin-top: 2px; }
-.income .value { color: #52c41a; } .expense .value { color: #ff4d4f; }
-.balance .value { color: #1890ff; } .count .value { color: #722ed1; }
-.badge-in { background: #e6f7e6; color: #52c41a; font-size: 12px; padding: 2px 8px; border-radius: 4px; }
-.badge-out { background: #fff1f0; color: #ff4d4f; font-size: 12px; padding: 2px 8px; border-radius: 4px; }
-.filter-bar { background: #fff; border-radius: 12px; padding: 14px; box-shadow: 0 2px 12px rgba(0,0,0,0.04); margin-bottom: 16px; }
-.nav-tabs .nav-link { color: #666; border: none; padding: 8px 16px; font-weight: 500; font-size: 14px; }
-.nav-tabs .nav-link.active { color: var(--accent); border-bottom: 3px solid var(--accent); background: transparent; }
-.table th { font-weight: 600; font-size: 12px; color: #666; background: #fafafa; white-space: nowrap; }
-.table td { font-size: 13px; vertical-align: middle; }
-.btn-primary { background: var(--accent); border-color: var(--accent); }
-.btn-primary:hover { background: #1d4ed8; border-color: #1d4ed8; }
-.btn-sm { font-size: 12px; }
-.empty-state { text-align: center; padding: 50px 20px; color: #bbb; }
-.empty-state i { font-size: 42px; display: block; margin-bottom: 10px; }
-.modal-header { background: linear-gradient(135deg, #1a1a2e, #16213e); color: #fff; }
-.form-label { font-weight: 500; font-size: 12px; margin-bottom: 3px; }
-.required:after { content: ' *'; color: #ff4d4f; }
-.btn-group-sm .btn.active { background: var(--accent) !important; color: #fff !important; border-color: var(--accent) !important; }
-#chartImage { max-width: 100%; border-radius: 8px; }
-#summaryContent table { font-size: 12px; }
-@media(max-width:800px){.topbar .nav{order:3;width:100%;overflow-x:auto;white-space:nowrap}.topbar .nav a{flex-shrink:0}.topbar .userbox{margin-left:auto}}
-</style>
+<link rel="stylesheet" href="{{ url_for('static', filename='funds.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='ui.css') }}">
 </head>
-<body>
+<body class="ux-funds">
 
 <header class="topbar">
-  <div class="brand">巡天御风<span>管理系统</span></div>
+  <div class="brand">巡天御风<span>管理平台</span></div>
   <nav class="nav" aria-label="系统导航">
     <a href="/">看板</a>
     <a href="/manage">任务管理</a>
@@ -72,7 +27,7 @@ body { background: var(--bg); font-family: system-ui, -apple-system, "Segoe UI",
     <a class="toplink" href="/logout">退出</a>
   </div>
 </header>
-<div class="page-head"><h1>资金管理</h1></div>
+<div class="page-head"><div><p class="ux-eyebrow">OPERATIONS / FINANCE</p><h1>资金管理</h1><p class="ux-head-sub">统一管理经费收支、审批状态与资金流向。</p></div></div>
 
 <div class="container-fluid px-3 py-3">
   <div class="row mb-3">
@@ -222,213 +177,13 @@ body { background: var(--bg); font-family: system-ui, -apple-system, "Segoe UI",
 
 <!-- ==================== 前端逻辑 ==================== -->
 <script>
-var API = '/funds/api/records', sort = {by:'record_date',order:'DESC'}, edM, ct=null;
-var ME_NAME = {{ me.name | tojson }}, ME_USERNAME = {{ me.username | tojson }};
-
-document.addEventListener('DOMContentLoaded', function(){
-  edM = new bootstrap.Modal('#editMd');
-  document.getElementById('aDt').value = new Date().toISOString().slice(0,10);
-  document.getElementById('aApplicant').value = ME_NAME;
-  if (ME_USERNAME === 'chy') { loadPending(); setInterval(loadPending, 30000); }
-  reload(); loadStats();
-  document.getElementById('mainTab').addEventListener('shown.bs.tab', function(e){
-    if (e.target.dataset.bsTarget === '#t-charts' && !ct) {
-      loadChart('monthly', document.querySelector('#t-charts .btn-group .active'));
-      loadStats();
-    }
-  });
-});
-
-function toggleF(){
-  var t = document.getElementById('aT').value, isExp = (t==='出');
-  document.getElementById('expF').style.display = isExp?'block':'none';
-  document.getElementById('lSD').textContent = isExp?'去向':(t==='进'?'来源':'来源 / 去向');
-  document.getElementById('aSD').placeholder = isExp?'例如：淘宝采购电机':(t==='进'?'例如：学校拨款':'');
-  document.getElementById('lSD').className = isExp?'form-label required':'form-label';
-  document.getElementById('aSD').required = isExp;
-  document.getElementById('aApplicant').required = isExp;
-  document.getElementById('aInvCnt').required = isExp;
-  document.getElementById('aHandler').required = isExp;
-  if(isExp) document.getElementById('aInvCnt').value = document.getElementById('aInvCnt').value || 1;
-}
-function clearF(){
-  document.getElementById('addF').reset();
-  document.getElementById('aDt').value = new Date().toISOString().slice(0,10);
-  document.getElementById('expF').style.display = 'none';
-  document.getElementById('lSD').textContent='来源 / 去向';
-  document.getElementById('lSD').className = 'form-label';
-  document.getElementById('aSD').required = false;
-  document.getElementById('aApplicant').required = false;
-  document.getElementById('aInvCnt').required = false;
-  document.getElementById('aHandler').required = false;
-  document.getElementById('aInvCnt').value = '1';
-  document.getElementById('aApplicant').value = ME_NAME;
-}
-function resetF(){ document.querySelectorAll('#ft,#fkw,#famin,#famax,#fdf,#fdt').forEach(function(e){e.value=''}); reload(); }
-function setSort(f){ sort.order=(sort.by===f?(sort.order==='ASC'?'DESC':'ASC'):'DESC'); sort.by=f; reload(); }
-
-function reload(){
-  var p = new URLSearchParams();
-  [{id:'ft',key:'record_type'},{id:'fkw',key:'keyword'},{id:'famin',key:'amount_min'},{id:'famax',key:'amount_max'},{id:'fdf',key:'date_from'},{id:'fdt',key:'date_to'}].forEach(function(x){
-    var v = document.getElementById(x.id).value.trim(); if(v) p.append(x.key,v);
-  });
-  p.append('sort_by',sort.by); p.append('sort_order',sort.order);
-  fetch(API+'?'+p).then(function(r){return r.json()}).then(function(j){
-    var rows = j.data||[];
-    document.getElementById('rcnt').textContent = rows.length + ' records';
-    document.getElementById('empty').style.display = rows.length?'none':'block';
-    document.getElementById('tbody').innerHTML = rows.length ? rows.map(function(r){
-      return '<tr>'+
-        '<td>'+r.id+'</td>'+
-        '<td><span class="'+(r.record_type==='进'?'badge-in':'badge-out')+'">'+(r.record_type==='进'?'进账':'支出')+'</span></td>'+
-        '<td>¥'+r.amount.toFixed(2)+'</td>'+
-        '<td>'+(r.category||'-')+'</td>'+
-        '<td title="'+(r.source_dest||'')+'">'+(r.source_dest||'-')+'</td>'+
-        '<td>'+(r.applicant||'-')+'</td>'+
-        '<td>'+(r.invoice_count||0)+'</td>'+
-        '<td>'+(r.handler||'-')+'</td>'+
-        '<td>'+r.record_date+'</td>'+
-        '<td>'+((r.review_status==='待审核')?'<span class="badge-pending">待审核</span> <button class="btn btn-outline-primary btn-sm" onclick="reviewRecord('+r.id+')">通过</button>':'<span class="badge-ok">已审核</span>')+'</td>'+
-        '<td style="max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+(r.notes||'').replace(/"/g,'&quot;')+'">'+(r.notes||'-')+'</td>'+
-        '<td><button class="btn btn-outline-secondary btn-sm" onclick="edR('+r.id+')"><i class="bi bi-pencil"></i></button> <button class="btn btn-outline-danger btn-sm" onclick="delR('+r.id+')"><i class="bi bi-trash"></i></button></td>'+
-        '</tr>';
-    }).join('') : '';
-  }).catch(function(e){ alert('Load failed: '+e.message); });
-}
-
-async function handleAdd(e){
-  e.preventDefault();
-  var d = {
-    record_type: document.getElementById('aT').value,
-    amount: parseFloat(document.getElementById('aAmt').value),
-    category: document.getElementById('aCat').value,
-    source_dest: document.getElementById('aSD').value.trim(),
-    record_date: document.getElementById('aDt').value,
-    notes: document.getElementById('aNotes').value.trim()
-  };
-  d.applicant = document.getElementById('aApplicant').value.trim() || ME_NAME;
-  if(d.record_type==='出'){
-    d.invoice_count = parseInt(document.getElementById('aInvCnt').value)||0;
-    d.handler = document.getElementById('aHandler').value.trim();
-  }
-  try {
-    var r = await fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});
-    var j = await r.json();
-    if(j.code===0){ alert(j.review_status==='待审核' ? '已添加，等待陈虹宇审核' : '已添加'); clearF(); reload(); loadStats(); if(ME_USERNAME==='chy')loadPending(); }
-    else alert(j.msg);
-  } catch(e){ alert('Submit failed: '+e.message); }
-}
-
-async function edR(id){
-  try {
-    var r = await fetch(API+'?sort_by=id&sort_order=DESC'), j = await r.json();
-    var d = j.data.find(function(x){return x.id===id});
-    if(!d) return alert('Not found');
-    document.getElementById('eId').value=d.id; document.getElementById('eT').value=d.record_type;
-    document.getElementById('eAmt').value=d.amount; document.getElementById('eCat').value=d.category||'';
-    document.getElementById('eSD').value=d.source_dest||''; document.getElementById('eDt').value=d.record_date;
-    document.getElementById('eInv').value=d.invoice_count||0; document.getElementById('eApl').value=d.applicant||'';
-    document.getElementById('eHdl').value=d.handler||''; document.getElementById('eNts').value=d.notes||'';
-    edM.show();
-  } catch(e){ alert('Load failed'); }
-}
-
-async function saveE(){
-  var d = {
-    record_type: document.getElementById('eT').value,
-    amount: parseFloat(document.getElementById('eAmt').value),
-    category: document.getElementById('eCat').value,
-    source_dest: document.getElementById('eSD').value.trim(),
-    record_date: document.getElementById('eDt').value,
-    invoice_count: parseInt(document.getElementById('eInv').value)||0,
-    applicant: document.getElementById('eApl').value.trim(),
-    handler: document.getElementById('eHdl').value.trim(),
-    notes: document.getElementById('eNts').value.trim()
-  };
-  try {
-    var r = await fetch(API+'/'+document.getElementById('eId').value,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});
-    var j = await r.json();
-    if(j.code===0){ edM.hide(); reload(); loadStats(); }
-    else alert(j.msg);
-  } catch(e){ alert('Save failed'); }
-}
-
-async function delR(id){
-  if(!confirm('Delete this record?')) return;
-  try { await fetch(API+'/'+id,{method:'DELETE'}); reload(); loadStats(); } catch(e){ alert('Delete failed'); }
-}
-
-async function reviewRecord(id){
-  if(!confirm('确认审核通过该记录？')) return;
-  try{
-    var r = await fetch(API+'/'+id+'/review',{method:'POST'});
-    var j = await r.json();
-    if(j.code===0){ alert('已审核通过'); reload(); loadStats(); if(ME_USERNAME==='chy')loadPending(); }
-    else alert(j.msg||'操作失败');
-  }catch(e){ alert('操作失败'); }
-}
-
-async function loadPending(){
-  try{
-    var r = await fetch('/funds/api/pending_review');
-    var j = await r.json();
-    var badge = document.getElementById('fundsPendingBadge');
-    if(badge && j.code===0 && j.count>0){ badge.textContent=j.count; badge.style.display=''; }
-    else if(badge){ badge.style.display='none'; }
-  }catch(e){}
-}
-
-function loadStats(){
-  Promise.all([fetch('/funds/api/stats'),fetch(API+'?sort_by=id&sort_order=DESC')]).then(function(arr){
-    return Promise.all([arr[0].json(),arr[1].json()]);
-  }).then(function(arr){
-    var d = arr[0].data, cnt = (arr[1].data||[]).length;
-    document.getElementById('sIn').textContent = '¥'+d.total_in.toFixed(2);
-    document.getElementById('sOut').textContent = '¥'+d.total_out.toFixed(2);
-    var bal = d.balance;
-    document.getElementById('sBal').textContent = (bal>=0?'¥':'¥-')+Math.abs(bal).toFixed(2);
-    document.getElementById('sBal').style.color = bal>=0?'#1890ff':'#ff4d4f';
-    document.getElementById('sCnt').textContent = cnt;
-
-    var h = '<table class="table table-sm small mb-0">';
-    h += '<tr class="table-success"><td colspan="2"><b>Income Sources TOP5</b></td></tr>';
-    d.source_stats.slice(0,5).forEach(function(s){ h += '<tr><td>'+s.source+'</td><td style="text-align:right">¥'+s.total.toFixed(2)+' ('+s.cnt+')</td></tr>'; });
-    if(!d.source_stats.length) h += '<tr><td colspan="2" class="text-muted">No data</td></tr>';
-    h += '<tr class="table-danger"><td colspan="2"><b>Member Expenses TOP5</b></td></tr>';
-    d.applicant_stats.slice(0,5).forEach(function(s){ h += '<tr><td>'+s.applicant+'</td><td style="text-align:right">¥'+s.total.toFixed(2)+' ('+s.cnt+')</td></tr>'; });
-    if(!d.applicant_stats.length) h += '<tr><td colspan="2" class="text-muted">No data</td></tr>';
-    h += '<tr><td colspan="2"><b>Category Expenses TOP5</b></td></tr>';
-    d.category_stats.slice(0,5).forEach(function(s){ h += '<tr><td>'+(s.category||'Other')+'</td><td style="text-align:right">¥'+s.total.toFixed(2)+'</td></tr>'; });
-    if(!d.category_stats.length) h += '<tr><td colspan="2" class="text-muted">No data</td></tr>';
-    h += '</table>';
-    document.getElementById('sumC').innerHTML = h;
-  }).catch(function(e){ console.error(e); });
-}
-
-function loadChart(type, btn){
-  ct = type;
-  document.querySelectorAll('#t-charts .btn-group .btn').forEach(function(b){ b.classList.remove('active'); });
-  if(btn) btn.classList.add('active');
-  fetch('/funds/api/chart?type='+type).then(function(r){return r.json()}).then(function(j){
-    if(j.code===0){
-      document.getElementById('chartImg').src = j.data;
-      document.getElementById('chartImg').style.display = 'inline';
-      document.getElementById('chartEmp').style.display = 'none';
-    } else {
-      document.getElementById('chartEmp').innerHTML = '<p>No data or generation failed</p>';
-      document.getElementById('chartEmp').style.display = 'block';
-      document.getElementById('chartImg').style.display = 'none';
-    }
-  }).catch(function(e){ console.error(e); });
-}
-
-function doExport(){
-  var u = '/funds/api/export?';
-  var t = document.getElementById('ft').value, k = document.getElementById('fkw').value.trim();
-  if(t) u += 'record_type='+t+'&';
-  if(k) u += 'keyword='+encodeURIComponent(k);
-  window.location.href = u;
-}
+window.XTYF_USER = {
+  name: {{ me.name | tojson }},
+  username: {{ me.username | tojson }},
+  canReview: {{ can_review | tojson }}
+};
 </script>
+<script src="{{ url_for('static', filename='funds.js') }}"></script>
+<div id="funds-feedback" class="ux-toast" role="status" aria-live="polite" hidden></div>
 </body>
 </html>

@@ -25,6 +25,9 @@
 import os
 import re
 import json
+import csv
+import io
+import math
 import shutil
 import hashlib
 import uuid
@@ -789,11 +792,12 @@ def get_stats(invoices):
 def index():
     user = current_user()
     html = create_index_html()
+    # 用户名注入 script 前进行 HTML 特殊字符转义，避免 </script> 破坏脚本标签。
+    safe_name = json.dumps(user['name'], ensure_ascii=False).replace('<', r'\u003c').replace('>', r'\u003e').replace('&', r'\u0026')
     html = html.replace(
         '/*__APP_CONFIG__*/',
         'window.IS_FINANCE=%s;window.ME_NAME=%s;' % (
-            'true' if _is_finance(user) else 'false',
-            json.dumps(user['name'], ensure_ascii=False),
+            'true' if _is_finance(user) else 'false', safe_name,
         ),
     )
     return Response(html, mimetype='text/html')
@@ -829,14 +833,22 @@ def api_invoices():
 
     min_amt = request.args.get('min_amount', '')
     max_amt = request.args.get('max_amount', '')
-    if min_amt: result = [i for i in result if i['amount'] >= float(min_amt)]
-    if max_amt: result = [i for i in result if i['amount'] <= float(max_amt)]
+    try:
+        low = float(min_amt) if min_amt else None
+        high = float(max_amt) if max_amt else None
+        if (low is not None and not math.isfinite(low)) or (high is not None and not math.isfinite(high)):
+            raise ValueError()
+        page = int(request.args.get('page', 1))
+        per_page = int(request.args.get('per_page', 50))
+        if page < 1 or per_page < 1 or per_page > 100:
+            raise ValueError()
+    except (TypeError, ValueError):
+        return jsonify({'error': '筛选或分页参数无效'}), 400
+    if low is not None: result = [i for i in result if i['amount'] >= low]
+    if high is not None: result = [i for i in result if i['amount'] <= high]
 
     inv_id = request.args.get('id', '')
     if inv_id: result = [i for i in result if i['id'] == inv_id]
-
-    page = int(request.args.get('page', 1))
-    per_page = int(request.args.get('per_page', 50))
     total = len(result)
     start = (page - 1) * per_page
     end = start + per_page
@@ -1592,6 +1604,28 @@ def api_export():
     with open(csv_path, 'w', encoding='utf-8-sig') as f:
         f.write('\n'.join(lines))
     return jsonify({'success': True, 'path': csv_path, 'count': len(invoices)})
+
+
+@bp.route('/api/export/download')
+@finance_required
+def api_export_download():
+    """真正下载 CSV，不再只把文件生成到服务器目录。"""
+    output = io.StringIO(newline='')
+    writer = csv.writer(output)
+    writer.writerow(['月份', '文件夹', '状态', '提交人', '序号', '类别', '金额', '金额来源',
+                     '供应商', '开票日期', '报销日期', '备注', '发票号码', '文件名', '文件路径'])
+    for inv in scan_invoices():
+        writer.writerow([
+            inv.get('month', ''), inv.get('folder', ''), inv.get('status', ''),
+            inv.get('submitter', ''), inv.get('seq', ''), inv.get('category', ''),
+            inv.get('amount', 0), inv.get('source', ''), inv.get('vendor', ''),
+            inv.get('date', ''), inv.get('reimbursed_date', ''), inv.get('notes', ''),
+            inv.get('invoice_number', ''), inv.get('filename', ''), inv.get('rel_path', ''),
+        ])
+    buffer = io.BytesIO(output.getvalue().encode('utf-8-sig'))
+    buffer.seek(0)
+    return send_file(buffer, mimetype='text/csv; charset=utf-8', as_attachment=True,
+                     download_name='invoices_' + datetime.now().strftime('%Y%m%d') + '.csv')
 
 
 # ---- 打包发票 zip：排除 .uploads / __pycache__ / 往届发票.zip ----
