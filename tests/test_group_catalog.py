@@ -48,7 +48,7 @@ class TestGroupCatalog(unittest.TestCase):
         rows = list(csv.DictReader(io.StringIO(
             self.admin.get("/api/members/export.csv").get_data(as_text=True).lstrip("\ufeff")
         )))
-        self.assertEqual(set(next(x for x in rows if x["ID"] == str(member["id"]))["组别"].split(";")), expected)
+        self.assertEqual(set(next(x for x in rows if x["ID"] == str(member["id"]))["专业组"].split(";")), expected)
         self.assertEqual(self.admin.post("/api/groups", json={"name": "专组重命名甲"}).status_code, 409)
         self.assertEqual(self.admin.post("/api/groups", json={"name": "不允许;复合"}).status_code, 400)
 

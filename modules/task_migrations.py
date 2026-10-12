@@ -22,6 +22,12 @@ CREATE TABLE IF NOT EXISTS member_groups (
     FOREIGN KEY (member_id) REFERENCES members(id),
     FOREIGN KEY (group_id) REFERENCES groups(id)
 );
+CREATE TABLE IF NOT EXISTS member_projects (
+    member_id INTEGER NOT NULL, project_id INTEGER NOT NULL,
+    PRIMARY KEY (member_id, project_id),
+    FOREIGN KEY (member_id) REFERENCES members(id),
+    FOREIGN KEY (project_id) REFERENCES projects(id)
+);
 CREATE TABLE IF NOT EXISTS task_groups (
     task_id INTEGER NOT NULL, group_id INTEGER NOT NULL,
     PRIMARY KEY (task_id, group_id),
@@ -74,6 +80,7 @@ def _catalog_id(db: sqlite3.Connection, table: str, raw_name: str) -> int | None
 
 
 DEFAULT_GROUPS = ("视觉", "电控", "机械", "硬件", "宣传", "运营")
+DEFAULT_VEHICLE_GROUPS = ("步兵", "哨兵", "重装", "飞镖")
 
 
 def _upgrade_composite_groups(db: sqlite3.Connection) -> None:
@@ -134,6 +141,26 @@ def migrate(db: sqlite3.Connection) -> None:
             db.executemany("INSERT OR IGNORE INTO groups(name) VALUES (?)",
                            ((name,) for name in DEFAULT_GROUPS))
             db.execute("INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (2, ?)", (now_str(),))
+        # A task already has one project_id. Projects are the stable vehicle-group
+        # dictionary; members can now participate in several through member_projects.
+        if db.execute("SELECT 1 FROM schema_migrations WHERE version=3").fetchone() is None:
+            db.executemany(
+                "INSERT OR IGNORE INTO projects(name) VALUES (?)",
+                ((name,) for name in DEFAULT_VEHICLE_GROUPS),
+            )
+            # Preserve existing project labels (e.g. 轮腿步兵/狗洞步兵), and infer
+            # participation only from actual assigned tasks; do not infer from specialty.
+            db.execute(
+                "INSERT OR IGNORE INTO member_projects(member_id, project_id) "
+                "SELECT owner_id, project_id FROM tasks "
+                "WHERE owner_id IS NOT NULL AND project_id IS NOT NULL"
+            )
+            db.execute(
+                "INSERT OR IGNORE INTO member_projects(member_id, project_id) "
+                "SELECT tp.member_id, t.project_id FROM task_participants tp "
+                "JOIN tasks t ON t.id=tp.task_id WHERE t.project_id IS NOT NULL"
+            )
+            db.execute("INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (3, ?)", (now_str(),))
         db.commit()
     except sqlite3.Error:
         db.rollback()

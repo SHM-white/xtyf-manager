@@ -55,6 +55,9 @@ def _catalog_write(table: str, item_id: int | None = None) -> Response | tuple[R
                         f")), '') WHERE id IN (SELECT {owner_col} FROM {relation} WHERE group_id=?)",
                         (item_id,),
                     )
+            elif table == "projects":
+                # Support old integrations reading the flat legacy column.
+                db.execute("UPDATE tasks SET project=? WHERE project_id=?", (name, item_id))
         db.commit()
     except sqlite3.IntegrityError:
         db.rollback()
