@@ -68,6 +68,7 @@ body.ws-app { margin:0 !important; min-width:0 !important; background:#f3f6fb !i
 @media(max-width:850px){
   .workspace-sidebar{transform:translateX(-100%);transition:transform .2s;box-shadow:none}
   body.ws-menu-open .workspace-sidebar{transform:translateX(0)}
+  body.ws-menu-open{overflow:hidden !important}
   body.ws-menu-open .ws-sidebar-overlay{display:block;position:fixed;inset:0;background:rgba(12,29,52,.5);z-index:140}
   .workspace-main{margin-left:0}.workspace-topbar{padding:0 17px;min-height:62px}
   .ws-menu-toggle{display:flex}.ws-breadcrumb{margin-right:auto}

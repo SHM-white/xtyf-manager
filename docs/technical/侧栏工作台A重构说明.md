@@ -15,7 +15,7 @@
 - 三个业务模块使用相同的 `_workspace_sidebar.html` 与 `_workspace_top.html`，不复制侧边栏 DOM。只通过服务端角色控制菜单可见性，后端已有角色校验不变。
 - `workspace.css` 是最后加载的布局层，旧业务 CSS 和业务 DOM/ID 保留，便于逐步清理。
 - 宽屏 242px 固定深色导航，小于等于 850px 为带遮罩的抽屉导航，支持 Escape 和遮罩关闭。
-- CSV 始终位于所属列表/业务页面标题区：任务中心/任务管理、成员管理、资金台账、发票中心；成员 CSV 是新增接口，不导出密码。
+- CSV 始终位于所属列表/业务页面标题区：任务中心/任务管理、成员管理、资金台账、发票中心；成员 CSV 是新增接口，不导出密码，转义可能被电子表格解释为公式的文本。
 - 原有 `/export.csv`、`/funds/api/export`、`/invoices/api/export/download` 保留；发票管理员 CSV/ZIP 仍按原权限。
 - 发票模板从读取原始 HTML + 字符串替换改为 Flask Jinja2 模板渲染，内嵌角色配置使用 `tojson`，不修改 PDF 业务处理。
 - 保留 HTTP 部署方式，不规划 HTTPS；不修改既有 SQLite 表结构及发票数据。

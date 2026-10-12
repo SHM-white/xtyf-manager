@@ -323,9 +323,13 @@ def export_members_csv():
     output = io.StringIO(newline="")
     writer = csv.writer(output)
     writer.writerow(["ID", "姓名", "用户名", "组别", "角色", "账号状态"])
+    def cell(value):
+        # Prevent spreadsheet formula injection for untrusted directory strings.
+        value = str(value or "")
+        return "'" + value if value.lstrip().startswith(("=", "+", "-", "@")) else value
     for row in rows:
-        writer.writerow([row["id"], row["name"], row["username"], row["group_name"],
-                         ROLE_NAMES.get(row["role"], row["role"]),
+        writer.writerow([row["id"], cell(row["name"]), cell(row["username"]), cell(row["group_name"]),
+                         cell(ROLE_NAMES.get(row["role"], row["role"])),
                          "启用" if row["is_active"] else "停用"])
     return Response("\ufeff" + output.getvalue(), mimetype="text/csv",
                     headers={"Content-Disposition": 'attachment; filename="members.csv"'})

@@ -32,6 +32,17 @@ class TestWorkspaceNavigation(unittest.TestCase):
         self.assertNotIn('password_hash', text)
         self.assertNotIn('ci-test-password-only', text)
 
+    def test_csv_escapes_spreadsheet_formulas(self):
+        created = self.admin.post('/api/member', json={
+            'name': '=cmd()', 'username': 'formula_user',
+            'password': 'formula-test-password',
+            'group_name': '+danger'
+        })
+        self.assertTrue(created.get_json()['ok'])
+        csv_text = self.admin.get('/api/members/export.csv').get_data(as_text=True)
+        self.assertIn("'=cmd()", csv_text)
+        self.assertIn("'+danger", csv_text)
+
     def test_member_cannot_access_private_management_pages(self):
         created = self.admin.post('/api/member', json={
             'name':'访客A','username':'workspace_member','password':'member-pass-123',

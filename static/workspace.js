@@ -16,4 +16,21 @@ document.addEventListener('DOMContentLoaded', () => {
   window.addEventListener('resize', () => {
     if (window.innerWidth > 850) setOpen(false);
   });
+  // The task pages load app.js, which already manages this badge. Other pages do not.
+  const badge = document.getElementById('fundsPendingBadge');
+  if (badge && typeof window.refreshFundsBadge !== 'function') {
+    const updateBadge = async () => {
+      try {
+        const response = await fetch('/funds/api/pending_review', {credentials: 'same-origin'});
+        if (!response.ok) throw new Error('pending review unavailable');
+        const data = await response.json();
+        badge.textContent = data.count > 0 ? String(data.count) : '0';
+        badge.style.display = data.code === 0 && data.count > 0 ? '' : 'none';
+      } catch (_) {
+        badge.style.display = 'none';
+      }
+    };
+    updateBadge();
+    setInterval(updateBadge, 30000);
+  }
 });
