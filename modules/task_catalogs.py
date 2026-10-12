@@ -107,6 +107,19 @@ def projects_edit(item_id: int):
     return _catalog_write("projects", item_id)
 
 
+def _set_member_projects(db: sqlite3.Connection, member_id: int, project_ids: list[int]) -> None:
+    db.execute("DELETE FROM member_projects WHERE member_id=?", (member_id,))
+    db.executemany("INSERT INTO member_projects(member_id,project_id) VALUES (?,?)",
+                   ((member_id, project_id) for project_id in project_ids))
+
+
+def _member_project_ids(db: sqlite3.Connection) -> dict[int, list[int]]:
+    result: dict[int, list[int]] = {}
+    for member_id, project_id in db.execute("SELECT member_id,project_id FROM member_projects ORDER BY project_id"):
+        result.setdefault(int(member_id), []).append(int(project_id))
+    return result
+
+
 def _set_member_groups(db: sqlite3.Connection, member_id: int, group_ids: list[int]) -> None:
     db.execute("DELETE FROM member_groups WHERE member_id=?", (member_id,))
     db.executemany("INSERT INTO member_groups(member_id,group_id) VALUES(?,?)",
@@ -148,6 +161,25 @@ def member_groups(member_id: int):
     return jsonify(ok=True, group_ids=group_ids)
 
 
+@bp.route("/api/member/<int:member_id>/projects", methods=["POST"])
+@manager_required
+def member_projects(member_id: int):
+    if (response := _path_id_error(member_id)) is not None:
+        return response
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify(ok=False, error="请求格式不正确"), 400
+    project_ids, error = normalize_ids(data.get("project_ids"), "造车组别")
+    db = get_db()
+    if error or project_ids is None or not active_ids(db, "projects", project_ids):
+        return jsonify(ok=False, error=error or "造车组别不存在"), 400
+    if db.execute("SELECT 1 FROM members WHERE id=?", (member_id,)).fetchone() is None:
+        return jsonify(ok=False, error="成员不存在"), 404
+    _set_member_projects(db, member_id, project_ids)
+    db.commit()
+    return jsonify(ok=True, project_ids=project_ids)
+
+
 @bp.route("/api/members", methods=["GET"])
 @manager_required
 def members_get():
@@ -159,7 +191,9 @@ def members_get():
     for member_id, group_id in db.execute("SELECT member_id,group_id FROM member_groups ORDER BY group_id"):
         group_map.setdefault(int(member_id), []).append(int(group_id))
     names = {int(row["id"]): str(row["name"]) for row in db.execute("SELECT id,name FROM groups")}
+    projects = _member_project_ids(db)
     return jsonify(ok=True, members=[row | {
+        "project_ids": projects.get(int(row["id"]), []),
         "group_ids": group_map[int(row["id"])],
         "group_name": ";".join(names[group_id] for group_id in group_map[int(row["id"])]),
     } for row in rows])
@@ -189,6 +223,9 @@ def member_create():
             db.rollback(); return jsonify(ok=False, error="group_name 与 group_ids 冲突"), 400
         group_ids = legacy
     group_ids = group_ids or []
+    project_ids, project_error = normalize_ids(data.get("project_ids"), "造车组别")
+    if project_error or project_ids is None or not active_ids(db, "projects", project_ids):
+        db.rollback(); return jsonify(ok=False, error=project_error or "造车组别不存在"), 400
     if error or not active_ids(db, "groups", group_ids):
         db.rollback(); return jsonify(ok=False, error=error or "组别不存在"), 400
     try:
@@ -197,6 +234,7 @@ def member_create():
             (name, username, generate_password_hash(password), "", role, now_str()),
         ).lastrowid)
         _set_member_groups(db, member_id, group_ids)
+        _set_member_projects(db, member_id, project_ids)
         db.commit()
     except sqlite3.IntegrityError:
         db.rollback(); return jsonify(ok=False, error=f"用户名 {username} 已存在"), 400
@@ -213,6 +251,9 @@ def members_import():
     requested_groups, group_error = normalize_ids(data.get("group_ids"), "组别")
     if group_error or ("group_ids" in data and not active_ids(db, "groups", requested_groups or [])):
         return jsonify(ok=False, error=group_error or "组别不存在"), 400
+    project_ids, project_error = normalize_ids(data.get("project_ids"), "造车组别")
+    if project_error or project_ids is None or not active_ids(db, "projects", project_ids):
+        return jsonify(ok=False, error=project_error or "造车组别不存在"), 400
     existing = {row[0] for row in db.execute("SELECT username FROM members")}
     created: list[str] = []
     for raw in str(data.get("text") or "").splitlines():
@@ -233,6 +274,7 @@ def members_import():
         if "group_ids" in data and legacy_groups and legacy_groups != requested_groups:
             db.rollback(); return jsonify(ok=False, error="导入组别与 group_ids 冲突"), 400
         _set_member_groups(db, member_id, requested_groups if "group_ids" in data else legacy_groups)
+        _set_member_projects(db, member_id, project_ids)
         existing.add(username); created.append(f"{name}（{username} / {password}）")
     db.commit()
     return jsonify(ok=True, created=created)
