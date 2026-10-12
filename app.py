@@ -159,7 +159,7 @@ def init_db():
             db.execute(
                 "INSERT INTO members (name, username, password_hash, group_name, role, created_at) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
-                ("管理员", "admin", generate_password_hash(initial_password), "管理员", "admin", now_str()),
+                ("管理员", "admin", generate_password_hash(initial_password), "", "admin", now_str()),
             )
             db.commit()
         else:

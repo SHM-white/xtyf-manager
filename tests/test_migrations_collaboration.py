@@ -2,7 +2,7 @@
 import sqlite3
 import unittest
 
-from modules.task_migrations import migrate
+from modules.task_migrations import DEFAULT_GROUPS, migrate
 
 
 BASE_SCHEMA = """
@@ -39,7 +39,7 @@ class TestCollaborationMigration(unittest.TestCase):
         db.commit()
         return db
 
-    def test_migration_preserves_exact_legacy_names_and_is_repeat_safe(self):
+    def test_migration_splits_legacy_composite_names_and_is_repeat_safe(self):
         # Given: legacy semicolon names and an inactive historical owner.
         db = self._legacy_db()
 
@@ -50,10 +50,28 @@ class TestCollaborationMigration(unittest.TestCase):
         db.commit()
         migrate(db)
 
-        # Then: names are trimmed but not split and removed history is not resurrected.
-        self.assertEqual(names, ["视觉;电控"])
+        # Then: each combined label becomes independent relations without resurrection.
+        self.assertEqual(set(names), set(DEFAULT_GROUPS))
         self.assertEqual(db.execute("SELECT COUNT(*) FROM member_groups").fetchone()[0], 0)
+        task_names = {row[0] for row in db.execute(
+            "SELECT g.name FROM task_groups tg JOIN groups g ON g.id=tg.group_id WHERE tg.task_id=1"
+        )}
+        self.assertEqual(task_names, {"视觉", "电控"})
         self.assertEqual(db.execute("SELECT owner_id FROM tasks WHERE id=1").fetchone()[0], 1)
+        db.close()
+
+    def test_default_labels_are_only_seeded_once(self):
+        db = self._legacy_db()
+        migrate(db)
+        db.execute("UPDATE groups SET name='嵌入式硬件' WHERE name='硬件'")
+        db.execute("DELETE FROM groups WHERE name='运营'")
+        db.commit()
+        migrate(db)
+        names = {row[0] for row in db.execute("SELECT name FROM groups")}
+        self.assertIn("嵌入式硬件", names)
+        self.assertNotIn("硬件", names)
+        self.assertNotIn("运营", names)
+        self.assertEqual(db.execute("SELECT COUNT(*) FROM schema_migrations").fetchone()[0], 2)
         db.close()
 
     def test_injected_failure_rolls_back_entire_migration(self):

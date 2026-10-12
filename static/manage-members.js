@@ -24,6 +24,15 @@ function renderMemberChoices() {
   if (filter) filter.innerHTML = options(state.groups, memberFilters.group, "全部组别");
 }
 
+function renderGroupCatalog() {
+  const host = document.getElementById("member-group-catalog");
+  if (!host) return;
+  host.innerHTML = state.groups.map((group) => {
+    const count = allMembers.filter((member) => (member.group_ids || []).map(Number).includes(Number(group.id))).length;
+    return `<li><span>${esc(group.name)}</span><small>${count} 人</small><button class="btn ghost sm" type="button" data-rename-member-group="${Number(group.id)}">重命名</button></li>`;
+  }).join("") || '<li class="muted">暂无组别</li>';
+}
+
 function renderMemberTable() {
   const body = document.querySelector("#member-table tbody");
   if (!body) return;
@@ -51,6 +60,7 @@ async function loadMembers() {
   state.allMembers = allMembers;
   renderMemberChoices();
   renderMemberTable();
+  renderGroupCatalog();
 }
 
 function editMemberGroups(member) {
@@ -106,6 +116,40 @@ function bindMemberForms() {
   });
 }
 
+function bindGroupCatalog() {
+  document.getElementById("member-group-create-form")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const button = form.querySelector("button[type=submit]");
+    button.disabled = true;
+    const result = await api("/api/groups", { name: new FormData(form).get("name") });
+    button.disabled = false;
+    if (!result?.ok) {
+      form.querySelector(".form-message").textContent = result?.error || "新增失败";
+      return;
+    }
+    form.reset();
+    form.querySelector(".form-message").textContent = "组别已添加";
+    await refresh();
+    await loadMembers();
+  });
+  document.getElementById("member-group-catalog")?.addEventListener("click", async (event) => {
+    const button = event.target.closest("[data-rename-member-group]");
+    if (!button) return;
+    const group = groupById(button.dataset.renameMemberGroup);
+    if (!group) return;
+    const name = prompt("修改专业组名称（成员和任务的归属会保留）", group.name);
+    if (name === null || name.trim() === group.name) return;
+    if (!name.trim()) return alert("名称不能为空");
+    button.disabled = true;
+    const result = await api(`/api/groups/${Number(group.id)}`, { name: name.trim() });
+    button.disabled = false;
+    if (!result?.ok) return alert(result?.error || "重命名失败");
+    await refresh();
+    await loadMembers();
+  });
+}
+
 function bindMemberTable() {
   const table = document.getElementById("member-table");
   table?.addEventListener("change", async (event) => {
@@ -142,9 +186,11 @@ function bindMemberTable() {
 addDataListener(() => {
   renderMemberChoices();
   renderMemberTable();
+  renderGroupCatalog();
 });
 document.addEventListener("DOMContentLoaded", () => {
   bindMemberForms();
   bindMemberTable();
+  bindGroupCatalog();
   loadMembers();
 });

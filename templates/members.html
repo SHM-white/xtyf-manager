@@ -44,6 +44,21 @@
     </table>
   </div>
 </section>
+<section class="panel">
+  <h2>专业组字典</h2>
+  <p class="ux-note">默认包含视觉、电控、机械、硬件、宣传、运营。可以新增或重命名，组别名称修改后成员与任务关联保持不变；成员可同时属于多个组。</p>
+  <div class="catalog-grid">
+    <section class="catalog-block">
+      <h3>组别设置</h3>
+      <form id="member-group-create-form" class="catalog-form">
+        <label><span>新组别名称</span><input name="name" maxlength="80" required placeholder="例如：算法"></label>
+        <button class="btn" type="submit">新增组别</button>
+        <p class="form-message" role="alert"></p>
+      </form>
+      <ul id="member-group-catalog" class="catalog-list" aria-live="polite"></ul>
+    </section>
+  </div>
+</section>
 {% endblock %}
 {% block scripts %}
 <script src="{{ url_for('static', filename='app.js') }}"></script>

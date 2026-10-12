@@ -31,6 +31,8 @@ def _catalog_write(table: str, item_id: int | None = None) -> Response | tuple[R
     name = str(data.get("name") or "").strip()
     if not name:
         return jsonify(ok=False, error="名称不能为空"), 400
+    if len(name) > 80 or (table == "groups" and ";" in name):
+        return jsonify(ok=False, error="名称不得超过 80 字；组别名称不能包含分号"), 400
     db = get_db()
     try:
         if item_id is None:
@@ -39,6 +41,20 @@ def _catalog_write(table: str, item_id: int | None = None) -> Response | tuple[R
             if db.execute(f"SELECT 1 FROM {table} WHERE id=?", (item_id,)).fetchone() is None:
                 return jsonify(ok=False, error="目录项不存在"), 404
             db.execute(f"UPDATE {table} SET name=? WHERE id=?", (name, item_id))
+            if table == "groups":
+                # Keep flat legacy columns in sync while preserving stable memberships.
+                for target, relation, owner_col in (
+                    ("members", "member_groups", "member_id"),
+                    ("tasks", "task_groups", "task_id"),
+                ):
+                    db.execute(
+                        f"UPDATE {target} SET group_name=COALESCE(("
+                        f"SELECT GROUP_CONCAT(name, ';') FROM ("
+                        f"SELECT g.name AS name FROM {relation} r JOIN groups g ON g.id=r.group_id "
+                        f"WHERE r.{owner_col}={target}.id ORDER BY g.id"
+                        f")), '') WHERE id IN (SELECT {owner_col} FROM {relation} WHERE group_id=?)",
+                        (item_id,),
+                    )
         db.commit()
     except sqlite3.IntegrityError:
         db.rollback()
