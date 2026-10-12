@@ -99,7 +99,8 @@ CREATE TABLE IF NOT EXISTS members (
     role TEXT NOT NULL DEFAULT 'member',
     is_active INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL,
-    session_version INTEGER NOT NULL DEFAULT 0
+    session_version INTEGER NOT NULL DEFAULT 0,
+    deleted_at TEXT
 );
 CREATE TABLE IF NOT EXISTS login_attempts (
     attempt_key TEXT PRIMARY KEY,
@@ -152,6 +153,8 @@ def init_db():
         cols = {row[1] for row in db.execute("PRAGMA table_info(members)")}
         if "session_version" not in cols:
             db.execute("ALTER TABLE members ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0")
+        if "deleted_at" not in cols:
+            db.execute("ALTER TABLE members ADD COLUMN deleted_at TEXT")
         count = db.execute("SELECT COUNT(*) AS c FROM members").fetchone()[0]
         if count == 0:
             initial_password = os.environ.get("PROGRESS_INITIAL_ADMIN_PASSWORD") or secrets.token_urlsafe(18)
