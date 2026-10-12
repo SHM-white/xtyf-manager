@@ -66,7 +66,9 @@ function renderMemberTable() {
     members
       .map(
         (member) =>
-          `<tr><td>${Number(member.id)}</td><td>${esc(member.name)}</td><td>${esc(member.username)}</td><td>${esc(memberGroups(member).join("、") || "未分组")}</td><td>${esc(memberVehicleGroups(member).join("、") || "未分组")}</td><td>${admin ? roleSelect(member) : esc(roleName(member.role))}</td><td>${member.is_active ? "在职" : "停用"}</td><td class="nowrap"><button class="btn ghost sm" type="button" data-member-groups="${Number(member.id)}">专业组</button><button class="btn ghost sm" type="button" data-member-projects="${Number(member.id)}">造车组别</button><button class="btn ghost sm" type="button" data-reset="${Number(member.id)}">重置密码</button><button class="btn ghost sm" type="button" data-toggle="${Number(member.id)}">${member.is_active ? "停用" : "启用"}</button></td></tr>`,
+          `<tr><td>${Number(member.id)}</td><td>${esc(member.name)}</td><td>${esc(member.username)}</td><td>${esc(memberGroups(member).join("、") || "未分组")}</td><td>${esc(memberVehicleGroups(member).join("、") || "未分组")}</td><td>${admin ? roleSelect(member) : esc(roleName(member.role))}</td><td>${member.is_active ? "在职" : "停用"}</td><td class="nowrap">${admin
+            ? `<button class="btn ghost sm" type="button" data-member-profile="${Number(member.id)}">编辑资料</button>`
+            : `<button class="btn ghost sm" type="button" data-member-groups="${Number(member.id)}">专业组</button><button class="btn ghost sm" type="button" data-member-projects="${Number(member.id)}">造车组别</button><button class="btn ghost sm" type="button" data-reset="${Number(member.id)}">重置密码</button><button class="btn ghost sm" type="button" data-toggle="${Number(member.id)}">${member.is_active ? "停用" : "启用"}</button>`}</td></tr>`,
       )
       .join("") || '<tr><td colspan="8" class="empty">没有符合条件的成员</td></tr>';
 }
@@ -86,6 +88,57 @@ async function loadMembers() {
   renderMemberTable();
   renderGroupCatalog();
   renderVehicleCatalog();
+}
+
+function editMemberProfile(member) {
+  const isSelf = Number(member.id) === Number(state.me?.id);
+  const roleOptions = [
+    ["member", "成员"], ["manager", "项管"], ["admin", "管理员"],
+  ].map(([value, label]) => `<option value="${value}" ${member.role === value ? "selected" : ""}>${label}</option>`).join("");
+  showModal(
+    `<div class="modal-head"><h2>编辑成员：${esc(member.name)}</h2><button class="btn ghost sm" type="button" data-close>关闭</button></div>
+    <form id="member-profile-form" class="form-grid">
+      <label>成员 ID（不可更改）<input value="${Number(member.id)}" readonly disabled></label>
+      <label>姓名（管理员维护）<input name="name" value="${esc(member.name)}" maxlength="80" required></label>
+      <label>登录用户名<input name="username" value="${esc(member.username)}" maxlength="64" required autocomplete="off"></label>
+      ${isSelf
+        ? '<p class="ux-note span-2">不能调整自己的系统角色或停用自己的账号；修改本人密码请到「账户设置」。</p>'
+        : `<label>系统角色<select name="role">${roleOptions}</select></label>
+           <label>账号状态<select name="is_active"><option value="1" ${member.is_active ? "selected" : ""}>启用</option><option value="0" ${!member.is_active ? "selected" : ""}>停用</option></select></label>
+           <label class="span-2">重设密码（留空保持不变）<input name="new_password" type="password" minlength="8" autocomplete="new-password" placeholder="至少 8 位"></label>`}
+      <fieldset class="span-2"><legend>专业组（可多选）</legend>${choiceGrid("group_ids", state.groups, member.group_ids || [])}</fieldset>
+      <fieldset class="span-2"><legend>造车组别（可多选）</legend>${choiceGrid("project_ids", state.projects, member.project_ids || [])}</fieldset>
+      <p class="form-message span-2" role="alert"></p>
+      <div class="modal-actions span-2"><button class="btn primary" type="submit">保存全部修改</button></div>
+    </form>`,
+    `编辑 ${member.name} 的资料`,
+  );
+  document.querySelector("#modal [data-close]")?.addEventListener("click", hideModal);
+  document.getElementById("member-profile-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const values = new FormData(form);
+    const payload = {
+      name: values.get("name"),
+      username: values.get("username"),
+      group_ids: checkedValues(form, "group_ids"),
+      project_ids: checkedValues(form, "project_ids"),
+    };
+    if (!isSelf) {
+      payload.role = values.get("role");
+      payload.is_active = values.get("is_active") === "1";
+      if (values.get("new_password")) payload.new_password = values.get("new_password");
+    }
+    const button = form.querySelector('[type="submit"]');
+    button.disabled = true;
+    const result = await api(`/api/member/${Number(member.id)}/profile`, payload);
+    button.disabled = false;
+    if (result?.ok) {
+      hideModal();
+      await refresh();
+      await loadMembers();
+    } else form.querySelector(".form-message").textContent = result?.error || "保存失败";
+  });
 }
 
 function editMemberProjects(member) {
@@ -231,10 +284,15 @@ function bindMemberTable() {
     loadMembers();
   });
   table?.addEventListener("click", async (event) => {
+    const profile = event.target.closest("[data-member-profile]");
     const group = event.target.closest("[data-member-groups]");
     const project = event.target.closest("[data-member-projects]");
     const reset = event.target.closest("[data-reset]");
     const toggle = event.target.closest("[data-toggle]");
+    if (profile) {
+      const member = allMembers.find((item) => Number(item.id) === Number(profile.dataset.memberProfile));
+      if (member) editMemberProfile(member);
+    }
     if (group) {
       const member = allMembers.find((item) => Number(item.id) === Number(group.dataset.memberGroups));
       if (member) editMemberGroups(member);

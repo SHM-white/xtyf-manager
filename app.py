@@ -36,6 +36,7 @@ from modules.discussions import discussions_bp
 from modules.task_api import bp as task_api_bp
 from modules.task_attachments import bp as task_attachments_bp
 from modules.task_catalogs import bp as task_catalogs_bp
+from modules.member_profiles import bp as member_profiles_bp
 from modules.task_migrations import migrate as migrate_tasks
 
 # ---- 关键路径与端口（secret.key 用于会话签名，首次运行自动生成）----
@@ -77,6 +78,7 @@ app.register_blueprint(funds_bp, url_prefix="/funds")
 app.register_blueprint(invoices_bp, url_prefix="/invoices")
 app.register_blueprint(task_api_bp)
 app.register_blueprint(task_catalogs_bp)
+app.register_blueprint(member_profiles_bp)
 app.register_blueprint(task_attachments_bp)
 app.register_blueprint(discussions_bp, url_prefix="/discussions")
 
@@ -322,6 +324,8 @@ def api_member_reset(member_id):
     row = db.execute("SELECT id, role FROM members WHERE id = ?", (member_id,)).fetchone()
     if row is None:
         return jsonify(ok=False, error="成员不存在"), 404
+    if member_id == user["id"]:
+        return jsonify(ok=False, error="修改本人密码请验证原密码"), 400
     if user["role"] != "admin" and row["role"] != "member":
         return jsonify(ok=False, error="无权限"), 403
     data = request.get_json(silent=True) or {}
