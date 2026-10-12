@@ -41,7 +41,7 @@ from flask import (Blueprint, Response, jsonify, redirect, request,
                    send_file, send_from_directory, stream_with_context)
 from urllib.parse import quote
 
-from common import current_user
+from common import current_user, get_db
 
 BASE_DIR = os.environ.get(
     'INVOICES_DIR',
@@ -76,6 +76,27 @@ def finance_required(view):
 
 
 # ---- 数据级权限：普通成员仅能查看/预览 submitter 为自己 的发票文件 ----
+def _submitter_id(name):
+    """新记录仅绑定姓名唯一的有效账号，重名不擅自认领。"""
+    if not isinstance(name, str) or not name.strip():
+        return 0
+    rows = get_db().execute(
+        "SELECT id FROM members WHERE name=? AND is_active=1", (name.strip(),)
+    ).fetchall()
+    return rows[0]['id'] if len(rows) == 1 else 0
+
+
+def _belongs_to_user(entry, user):
+    """历史无 ID 的记录暂按姓名兼容，新记录必须按 ID。"""
+    owner_id = entry.get('submitter_id')
+    if owner_id is not None:
+        try:
+            return int(owner_id) == user['id']
+        except (ValueError, TypeError):
+            return False
+    return str(entry.get('submitter') or '').strip() == user['name']
+
+
 def _user_can_view(rel_path):
     user = current_user()
     if _is_finance(user):
@@ -83,7 +104,7 @@ def _user_can_view(rel_path):
     rel = (rel_path or '').replace('\\', '/')
     meta = load_meta()
     for key, value in meta.items():
-        if key.replace('\\', '/') == rel and value.get('submitter', '').strip() == user['name']:
+        if key.replace('\\', '/') == rel and _belongs_to_user(value, user):
             return True
     return False
 
@@ -780,7 +801,8 @@ def _add_invoice(invoices, meta, month, status, filepath):
         'category': inv_meta.get('category_override') or info['category'],
         'amount': info['amount'], 'vendor': info['vendor'], 'date': info['date'],
         'seq': info['seq'], 'status': final_status,
-        'submitter': inv_meta.get('submitter', ''), 'notes': inv_meta.get('notes', ''),
+        'submitter': inv_meta.get('submitter', ''), 'submitter_id': inv_meta.get('submitter_id'),
+        'notes': inv_meta.get('notes', ''),
         'from_filename': info['from_filename'], 'source': '',
         'reimbursed_date': inv_meta.get('reimbursed_date', ''),
         'tags': inv_meta.get('tags', []),
@@ -855,7 +877,7 @@ def api_invoices():
     user = current_user()
     invoices = scan_invoices()
     if not _is_finance(user):
-        invoices = [i for i in invoices if i.get('submitter') == user['name']]
+        invoices = [i for i in invoices if _belongs_to_user(i, user)]
     result = invoices
 
     for key in ['month', 'category', 'status', 'submitter']:
@@ -906,7 +928,7 @@ def api_stats():
     user = current_user()
     invoices = scan_invoices()
     if not _is_finance(user):
-        invoices = [i for i in invoices if i.get('submitter') == user['name']]
+        invoices = [i for i in invoices if _belongs_to_user(i, user)]
     return jsonify(get_stats(invoices))
 
 
@@ -946,6 +968,8 @@ def api_invoice_update():
 
     for field in ['status', 'submitter', 'notes', 'category_override', 'reimbursed_date', 'tags', 'invoice_number']:
         if field in data: meta[inv_id][field] = data[field]
+    if 'submitter' in data:
+        meta[inv_id]['submitter_id'] = _submitter_id(data['submitter'])
     meta[inv_id]['updated'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     save_meta(meta)
 
@@ -982,6 +1006,8 @@ def api_invoice_batch():
         if inv_id not in meta: meta[inv_id] = {}
         old_status = meta[inv_id].get('status', '')
         for field, value in updates.items(): meta[inv_id][field] = value
+        if 'submitter' in updates:
+            meta[inv_id]['submitter_id'] = _submitter_id(updates['submitter'])
         meta[inv_id]['updated'] = now
         new_status = updates.get('status', old_status)
         if new_status != old_status and new_status in STATUS_NAMES:
@@ -1410,6 +1436,7 @@ def api_upload_confirm():
     if not _is_finance():
         status = '未报销'
         submitter = current_user()['name']
+    submitter_id = current_user()['id'] if not _is_finance() else _submitter_id(submitter)
     category = data.get('category', '')
     notes = data.get('notes', '').strip()
     amount = _valid_amount(data.get('amount', 0))
@@ -1459,7 +1486,7 @@ def api_upload_confirm():
     meta = {k.replace('\\', '/'): v for k, v in load_meta().items()}
     meta[rel_path] = {
         'rel_path': rel_path, 'month': month, 'filename': os.path.basename(new_path),
-        'status': status, 'submitter': submitter, 'notes': notes,
+        'status': status, 'submitter': submitter, 'submitter_id': submitter_id, 'notes': notes,
         'category_override': category, 'reimbursed_date': '',
         'invoice_number': invoice_number, 'tags': [],
         'uploaded': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
@@ -1502,6 +1529,7 @@ def api_upload_confirm_batch():
         if not is_fin:
             status = '未报销'
             submitter = cur_name
+        submitter_id = _submitter_id(submitter) if is_fin else current_user()['id']
         category = item.get('category', '')
         notes = item.get('notes', '').strip()
         amount = _valid_amount(item.get('amount', 0))
@@ -1541,7 +1569,7 @@ def api_upload_confirm_batch():
             meta = {k.replace('\\', '/'): v for k, v in load_meta().items()}
             meta[rel_path] = {
                 'rel_path': rel_path, 'month': month, 'filename': os.path.basename(new_path),
-                'status': status, 'submitter': submitter, 'notes': notes,
+                'status': status, 'submitter': submitter, 'submitter_id': submitter_id, 'notes': notes,
                 'category_override': category, 'reimbursed_date': '',
                 'invoice_number': invoice_number, 'tags': [],
                 'uploaded': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),

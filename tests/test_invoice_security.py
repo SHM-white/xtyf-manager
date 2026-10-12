@@ -94,6 +94,31 @@ class TestInvoiceSecurity(unittest.TestCase):
         finally:
             os.remove(path)
 
+    def test_same_name_member_cannot_read_another_users_invoice(self):
+        own_temp = self._upload(self.member)
+        confirmed = self.member.post('/invoices/api/upload/confirm', json={
+            'tmp_path': own_temp, 'month': '2026.10', 'amount': 20
+        }).get_json()
+        self.assertTrue(confirmed['success'])
+        rel = confirmed['rel_path']
+        self.assertGreater(invoices.load_meta()[rel]['submitter_id'], 0)
+
+        other_login = 'same_name_' + uuid4().hex[:12]
+        created = self.admin.post('/api/member', json={
+            'name': '隔离测试成员', 'username': other_login,
+            'password': 'same-name-test-password'
+        })
+        self.assertTrue(created.get_json()['ok'])
+        other = app_module.app.test_client()
+        self.assertTrue(other.post('/login', json={
+            'username': other_login, 'password': 'same-name-test-password'
+        }).get_json()['ok'])
+        self.assertEqual(other.get('/invoices/file/' + rel).status_code, 403)
+        result = other.get('/invoices/api/invoices').get_json()['data']
+        self.assertFalse(any(inv['rel_path'] == rel for inv in result))
+        mine = self.member.get('/invoices/api/invoices').get_json()['data']
+        self.assertTrue(any(inv['rel_path'] == rel for inv in mine))
+
     def test_bad_pdf_and_mutation_whitelist(self):
         response = self.member.post('/invoices/api/upload', data={
             'file': (io.BytesIO(b'not a pdf'), 'fake.pdf')
