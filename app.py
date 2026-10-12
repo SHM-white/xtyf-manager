@@ -245,7 +245,13 @@ def logout():
 @app.route("/")
 @login_required
 def index():
-    return render_template("board.html", me=current_user(), page="board", role_names=ROLE_NAMES)
+    return render_template("dashboard.html", me=current_user(), page="dashboard", role_names=ROLE_NAMES)
+
+
+@app.route("/tasks")
+@login_required
+def tasks():
+    return render_template("board.html", me=current_user(), page="tasks", role_names=ROLE_NAMES)
 
 
 @app.route("/account")
@@ -257,13 +263,16 @@ def account():
 
 
 @app.route("/manage")
-@login_required
+@manager_required
 def manage():
-    user = current_user()
-    if user["role"] not in ("admin", "manager"):
-        return redirect(url_for("index"))
-    return render_template("manage.html", me=user, page="manage", role_names=ROLE_NAMES,
+    return render_template("manage.html", me=current_user(), page="manage", role_names=ROLE_NAMES,
                            statuses=STATUSES, priorities=PRIORITIES)
+
+
+@app.route("/members")
+@manager_required
+def members():
+    return render_template("members.html", me=current_user(), page="members", role_names=ROLE_NAMES)
 
 
 # ==================== 看板数据 API ====================
@@ -301,6 +310,25 @@ def api_members():
         "SELECT id, name, username, group_name, role, is_active FROM members ORDER BY group_name, id"
     ).fetchall()
     return jsonify(ok=True, members=[dict(r) for r in rows])
+
+
+# Export only public directory fields, never hashes, tokens, or temporary passwords.
+@app.route("/api/members/export.csv")
+@manager_required
+def export_members_csv():
+    rows = get_db().execute(
+        "SELECT id, name, username, group_name, role, is_active "
+        "FROM members ORDER BY group_name, id"
+    ).fetchall()
+    output = io.StringIO(newline="")
+    writer = csv.writer(output)
+    writer.writerow(["ID", "姓名", "用户名", "组别", "角色", "账号状态"])
+    for row in rows:
+        writer.writerow([row["id"], row["name"], row["username"], row["group_name"],
+                         ROLE_NAMES.get(row["role"], row["role"]),
+                         "启用" if row["is_active"] else "停用"])
+    return Response("\ufeff" + output.getvalue(), mimetype="text/csv",
+                    headers={"Content-Disposition": 'attachment; filename="members.csv"'})
 
 
 # ==================== 任务 API（新建 / 更新 / 删除 / 历史）====================
