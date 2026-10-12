@@ -27,7 +27,7 @@ class TestInvoiceSecurity(unittest.TestCase):
 
     def _upload(self, client):
         response = client.post('/invoices/api/upload', data={
-            'file': (io.BytesIO(b'%PDF-1.4\n%%EOF\n'), 'receipt.pdf')
+            'file': (io.BytesIO(b'%PDF-1.4\n% ' + uuid4().hex.encode('ascii') + b'\n%%EOF\n'), 'receipt.pdf')
         }, content_type='multipart/form-data')
         self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
         data = response.get_json()
