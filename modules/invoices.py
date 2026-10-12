@@ -251,6 +251,51 @@ def _is_safe_rel(rel):
     return '..' not in [p for p in s.split('/') if p]
 
 
+def _user_upload_dir():
+    """上传暂存文件按成员 ID 隔离。"""
+    directory = os.path.join(UPLOAD_DIR, str(current_user()['id']))
+    ensure_dir(directory)
+    return directory
+
+
+def _own_temp_path(rel):
+    """仅允许操作本人的普通临时 PDF 文件。"""
+    if not isinstance(rel, str) or not _is_safe_rel(rel):
+        return None
+    path = _safe_join(rel)
+    if not path or not path.lower().endswith('.pdf'):
+        return None
+    if os.path.dirname(os.path.realpath(path)) != os.path.realpath(_user_upload_dir()):
+        return None
+    return path if os.path.isfile(path) else None
+
+
+def _save_temp_pdf(file):
+    safe_name = re.sub(r'[\\/:*?"<>|]', '_', file.filename)
+    path = os.path.join(_user_upload_dir(), uuid.uuid4().hex + '_' + safe_name)
+    file.save(path)
+    with open(path, 'rb') as stream:
+        if stream.read(5) != b'%PDF-':
+            os.remove(path)
+            raise ValueError('文件不是有效的 PDF 格式')
+    return path
+
+
+def _visible_duplicates(items):
+    """成员只看到重复类型，不泄漏其他成员的路径。"""
+    if _is_finance():
+        return items
+    return [{'type': entry.get('type', '重复发票'), 'path': ''} for entry in items]
+
+
+def _valid_amount(value):
+    try:
+        amount = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return amount if math.isfinite(amount) and amount >= 0 else None
+
+
 def _migrate_cache_key(old_rel, new_rel):
     """文件移动后把金额缓存键从旧路径迁移到新路径"""
     try:
@@ -273,15 +318,14 @@ def cleanup_uploads(max_age_hours=24 * 7):
     ensure_dir(quarantine)
     moved = 0
     cutoff = time.time() - max_age_hours * 3600
-    for f in os.listdir(UPLOAD_DIR):
-        if f == '_待清理':
-            continue
-        fp = os.path.join(UPLOAD_DIR, f)
-        if not os.path.isfile(fp):
-            continue
-        if os.path.getmtime(fp) < cutoff:
+    for root, dirs, files in os.walk(UPLOAD_DIR):
+        dirs[:] = [d for d in dirs if d != '_待清理']
+        for name in files:
+            fp = os.path.join(root, name)
+            if not os.path.isfile(fp) or os.path.islink(fp) or os.path.getmtime(fp) >= cutoff:
+                continue
             try:
-                shutil.move(fp, os.path.join(quarantine, f))
+                shutil.move(fp, os.path.join(quarantine, uuid.uuid4().hex + '_' + name))
                 moved += 1
             except OSError:
                 pass
@@ -493,7 +537,8 @@ def move_invoice_file(inv_id, new_status):
         new_rel = os.path.relpath(new_path, BASE_DIR).replace('\\', '/')
         inv_meta['rel_path'] = new_rel
         inv_meta['filename'] = os.path.basename(new_path)
-        meta[inv_id] = inv_meta
+        meta.pop(inv_id, None)
+        meta[new_rel] = inv_meta
         save_meta(meta)
         _migrate_cache_key(old_rel, new_rel)
         return True
@@ -883,10 +928,15 @@ def api_submitters():
 @finance_required
 # ---- 修改发票：状态/提交人/备注/类别/报销日期/标签/发票号（管理）----
 def api_invoice_update():
-    data = request.get_json(force=True)
-    inv_id = data.get('id', '').replace('\\', '/')
-    if not inv_id: return jsonify({'success': False, 'error': '缺少 id'})
-    if not _is_safe_rel(inv_id): return jsonify({'success': False, 'error': '非法 id'}), 400
+    data = request.get_json(silent=True) or {}
+    inv_id = data.get('id', '')
+    if not isinstance(inv_id, str) or not _is_safe_rel(inv_id):
+        return jsonify({'success': False, 'error': '无效发票 ID'}), 400
+    inv_id = inv_id.replace('\\', '/')
+    if not os.path.isfile(_safe_join(inv_id) or ''):
+        return jsonify({'success': False, 'error': '发票文件不存在'}), 404
+    if 'status' in data and data['status'] not in STATUS_NAMES:
+        return jsonify({'success': False, 'error': '无效报销状态'}), 400
 
     meta = {k.replace('\\', '/'): v for k, v in load_meta().items()}
     if inv_id not in meta: meta[inv_id] = {}
@@ -913,7 +963,14 @@ def api_invoice_batch():
     data = request.get_json(force=True)
     ids = data.get('ids', [])
     updates = data.get('updates', {})
-    if not ids or not updates: return jsonify({'success': False, 'error': '缺少参数'})
+    allowed = {'status', 'submitter', 'notes', 'category_override',
+               'reimbursed_date', 'tags', 'invoice_number'}
+    if not isinstance(ids, list) or not isinstance(updates, dict) or not ids or len(ids) > 500:
+        return jsonify({'success': False, 'error': '批量参数格式无效'}), 400
+    if not updates or set(updates) - allowed:
+        return jsonify({'success': False, 'error': '存在不允许修改的字段'}), 400
+    if 'status' in updates and updates['status'] not in STATUS_NAMES:
+        return jsonify({'success': False, 'error': '无效报销状态'}), 400
 
     meta = {k.replace('\\', '/'): v for k, v in load_meta().items()}
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -921,7 +978,7 @@ def api_invoice_batch():
     for inv_id in ids:
         if not isinstance(inv_id, str): continue
         inv_id = inv_id.replace('\\', '/')
-        if not _is_safe_rel(inv_id): continue
+        if not _is_safe_rel(inv_id) or not os.path.isfile(_safe_join(inv_id) or ''): continue
         if inv_id not in meta: meta[inv_id] = {}
         old_status = meta[inv_id].get('status', '')
         for field, value in updates.items(): meta[inv_id][field] = value
@@ -946,9 +1003,13 @@ def api_check_duplicate():
     tmp_path = request.args.get('tmp_path', '')
 
     path = None
-    if tmp_path and _is_safe_rel(tmp_path):
-        path = _safe_join(tmp_path)
-    elif rel_path and _is_safe_rel(rel_path):
+    if tmp_path:
+        path = _own_temp_path(tmp_path)
+        if path is None:
+            return jsonify({'success': False, 'error': '无权限访问该临时文件'}), 403
+    elif rel_path:
+        if not _is_safe_rel(rel_path) or not _user_can_view(rel_path):
+            return jsonify({'success': False, 'error': '无权限'}), 403
         path = _safe_join(rel_path)
     elif not tmp_path and not rel_path:
         return jsonify({'success': True, 'duplicates': []})
@@ -959,6 +1020,8 @@ def api_check_duplicate():
 
     # 同时按发票号码查
     if invoice_number:
+        if len(invoice_number) > 64:
+            return jsonify({'success': False, 'error': '发票号码过长'}), 400
         for entry in os.listdir(BASE_DIR):
             entry_path = os.path.join(BASE_DIR, entry)
             if not os.path.isdir(entry_path) or is_skipped(entry): continue
@@ -972,7 +1035,7 @@ def api_check_duplicate():
                         if rp not in [d['path'] for d in duplicates]:
                             duplicates.append({'type': '发票号码匹配', 'path': rp})
 
-    return jsonify({'success': True, 'duplicates': duplicates})
+    return jsonify({'success': True, 'duplicates': _visible_duplicates(duplicates)})
 
 
 # ---- 后台任务调度 ----
@@ -1233,10 +1296,11 @@ def api_upload():
     if not file.filename.lower().endswith('.pdf'):
         return jsonify({'success': False, 'error': '仅支持PDF文件'})
 
-    ensure_dir(UPLOAD_DIR)
-    safe_name = re.sub(r'[\\/:*?"<>|]', '_', file.filename)
-    tmp_path = os.path.join(UPLOAD_DIR, f"_{datetime.now().strftime('%Y%m%d%H%M%S%f')}_{safe_name}")
-    file.save(tmp_path)
+    try:
+        tmp_path = _save_temp_pdf(file)
+    except ValueError as exc:
+        return jsonify({'success': False, 'error': str(exc)}), 400
+    safe_name = os.path.basename(tmp_path).split('_', 1)[-1]
 
     info = extract_invoice_info(tmp_path)
     fn_info = parse_invoice_filename(safe_name)
@@ -1254,7 +1318,7 @@ def api_upload():
         'tmp_path': os.path.relpath(tmp_path, BASE_DIR),
         'original_name': file.filename,
         'info': info,
-        'duplicates': duplicates,
+        'duplicates': _visible_duplicates(duplicates),
         'has_duplicate': len(duplicates) > 0,
     })
 
@@ -1267,7 +1331,6 @@ def api_upload_batch():
     if not files:
         return jsonify({'success': False, 'error': '没有上传文件'})
 
-    ensure_dir(UPLOAD_DIR)
     results = []
 
     # 预建发票号码索引（一次扫描，全局复用）
@@ -1278,11 +1341,10 @@ def api_upload_batch():
             results.append({'original_name': file.filename, 'error': '非PDF文件', 'success': False})
             continue
 
-        safe_name = re.sub(r'[\\/:*?"<>|]', '_', file.filename)
-        tmp_path = os.path.join(UPLOAD_DIR, f"_{datetime.now().strftime('%Y%m%d%H%M%S%f')}_{safe_name}")
         try:
-            file.save(tmp_path)
-        except Exception as e:
+            tmp_path = _save_temp_pdf(file)
+            safe_name = os.path.basename(tmp_path).split('_', 1)[-1]
+        except (ValueError, OSError) as e:
             results.append({'original_name': file.filename, 'error': f'保存失败: {e}', 'success': False})
             continue
 
@@ -1308,7 +1370,7 @@ def api_upload_batch():
             'tmp_path': os.path.relpath(tmp_path, BASE_DIR),
             'original_name': file.filename,
             'info': info,
-            'duplicates': duplicates,
+            'duplicates': _visible_duplicates(duplicates),
             'has_duplicate': len(duplicates) > 0,
         })
 
@@ -1320,12 +1382,12 @@ def api_upload_cleanup():
     """删除被放弃的临时上传文件(如用户取消入库)"""
     data = request.get_json(silent=True) or {}
     paths = data.get('tmp_paths', [])
+    if not isinstance(paths, list):
+        return jsonify({'success': False, 'error': '临时文件列表无效'}), 400
     removed = 0
     for p in paths:
-        if not isinstance(p, str) or not _is_safe_rel(p):
-            continue
-        fp = _safe_join(p)
-        if fp and os.path.isfile(fp) and os.path.dirname(os.path.realpath(fp)) == os.path.realpath(UPLOAD_DIR):
+        fp = _own_temp_path(p)
+        if fp:
             try:
                 os.remove(fp)
                 removed += 1
@@ -1339,9 +1401,9 @@ def api_upload_cleanup():
 def api_upload_confirm():
     data = request.get_json(force=True)
     tmp_rel = data.get('tmp_path', '')
-    if not _is_safe_rel(tmp_rel):
-        return jsonify({'success': False, 'error': '非法临时文件路径'}), 400
-    tmp_path = _safe_join(tmp_rel)
+    tmp_path = _own_temp_path(tmp_rel)
+    if not tmp_path:
+        return jsonify({'success': False, 'error': '临时文件不存在或不属于当前账号'}), 400
     month = _normalize_month(data.get('month', ''))
     status = data.get('status', '未报销')
     submitter = data.get('submitter', '').strip()
@@ -1350,7 +1412,9 @@ def api_upload_confirm():
         submitter = current_user()['name']
     category = data.get('category', '')
     notes = data.get('notes', '').strip()
-    amount = float(data.get('amount', 0))
+    amount = _valid_amount(data.get('amount', 0))
+    if amount is None:
+        return jsonify({'success': False, 'error': '金额必须是非负有限数值'}), 400
     vendor = data.get('vendor', '')
     original_name = data.get('original_name', '')
     invoice_number = data.get('invoice_number', '')
@@ -1418,6 +1482,8 @@ def api_upload_confirm_batch():
     """批量确认上传"""
     data = request.get_json(force=True)
     items = data.get('items', [])
+    if not isinstance(items, list) or len(items) > 200:
+        return jsonify({'success': False, 'error': '批次格式无效或超过 200 张'}), 400
     if not items:
         return jsonify({'success': False, 'error': '没有待入库的发票'})
 
@@ -1425,8 +1491,11 @@ def api_upload_confirm_batch():
     is_fin = _is_finance()
     cur_name = current_user()['name']
     for item in items:
+        if not isinstance(item, dict):
+            results.append({'file': '', 'status': 'error', 'reason': '条目格式错误'})
+            continue
         tmp_rel = item.get('tmp_path', '')
-        tmp_path = _safe_join(tmp_rel) if _is_safe_rel(tmp_rel) else None
+        tmp_path = _own_temp_path(tmp_rel)
         month = _normalize_month(item.get('month', ''))
         status = item.get('status', '未报销')
         submitter = item.get('submitter', '').strip()
@@ -1435,7 +1504,10 @@ def api_upload_confirm_batch():
             submitter = cur_name
         category = item.get('category', '')
         notes = item.get('notes', '').strip()
-        amount = float(item.get('amount', 0))
+        amount = _valid_amount(item.get('amount', 0))
+        if amount is None:
+            results.append({'file': item.get('original_name', ''), 'status': 'error', 'reason': '金额无效'})
+            continue
         vendor = item.get('vendor', '')
         original_name = item.get('original_name', '')
         invoice_number = item.get('invoice_number', '')
