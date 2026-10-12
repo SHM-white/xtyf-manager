@@ -12,7 +12,7 @@
   <header class="topbar">
     <div class="brand">巡天御风<span>管理系统</span></div>
     {% if me %}
-    <nav class="nav">
+    <nav class="nav" aria-label="系统导航">
       <a href="{{ url_for('index') }}" class="{% if page == 'board' %}active{% endif %}">看板</a>
       {% if me.role in ('admin', 'manager') %}
       <a href="{{ url_for('manage') }}" class="{% if page == 'manage' %}active{% endif %}">任务管理</a>
@@ -34,7 +34,7 @@
     {% block content %}{% endblock %}
   </main>
   <div class="modal-mask hidden" id="modal-mask">
-    <div class="modal" id="modal"></div>
+    <div class="modal" id="modal" role="dialog" aria-modal="true" aria-label="操作窗口"></div>
   </div>
   {% block scripts %}{% endblock %}
 </body>

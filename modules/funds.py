@@ -13,6 +13,7 @@
 import base64
 import csv
 import io
+import math
 import os
 import sqlite3
 from datetime import datetime
@@ -193,7 +194,14 @@ def get_records():
         if val:
             op = ">=" if "min" in f else "<="
             q += f" AND amount {op} ?"
-            params.append(float(val))
+            try:
+                numeric = float(val)
+                if not math.isfinite(numeric):
+                    raise ValueError()
+            except (TypeError, ValueError):
+                conn.close()
+                return jsonify({"code": 1, "msg": "金额筛选条件无效"}), 400
+            params.append(numeric)
     for f, col in [("date_from", "record_date"), ("date_to", "record_date")]:
         val = request.args.get(f, "").strip()
         if val:
@@ -226,8 +234,14 @@ def add_record():
         amount = float(data.get("amount", 0))
     except (TypeError, ValueError):
         return jsonify({"code": 1, "msg": "金额格式无效"})
-    if amount <= 0:
-        return jsonify({"code": 1, "msg": "金额必须大于0"})
+    if not math.isfinite(amount) or amount <= 0:
+        return jsonify({"code": 1, "msg": "金额必须是大于0的有限数值"}), 400
+    try:
+        invoice_count = int(data.get("invoice_count", 0))
+        if invoice_count < 0:
+            raise ValueError()
+    except (TypeError, ValueError):
+        return jsonify({"code": 1, "msg": "发票数目必须是非负整数"}), 400
 
     rd = data.get("record_date", "")
     if not rd:
@@ -253,7 +267,7 @@ def add_record():
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)''', (
         rt, amount, data.get("category", ""),
         data.get("source_dest", "") if rt == "进" else data.get("source_dest", "").strip(),
-        applicant, int(data.get("invoice_count", 0)),
+        applicant, invoice_count,
         data.get("handler", "").strip(), rd, data.get("notes", ""),
         review_status, reviewed_by, reviewed_at,
     ))
@@ -283,11 +297,25 @@ def update_record(rid):
             fields.append(f"{f}=?")
             vals.append(data[f])
     if "amount" in data:
+        try:
+            amount = float(data["amount"])
+            if not math.isfinite(amount) or amount <= 0:
+                raise ValueError()
+        except (TypeError, ValueError):
+            conn.close()
+            return jsonify({"code": 1, "msg": "金额必须是大于0的有限数值"}), 400
         fields.append("amount=?")
-        vals.append(float(data["amount"]))
+        vals.append(amount)
     if "invoice_count" in data:
+        try:
+            invoice_count = int(data["invoice_count"])
+            if invoice_count < 0:
+                raise ValueError()
+        except (TypeError, ValueError):
+            conn.close()
+            return jsonify({"code": 1, "msg": "发票数目必须是非负整数"}), 400
         fields.append("invoice_count=?")
-        vals.append(int(data["invoice_count"]))
+        vals.append(invoice_count)
     if fields:
         vals.append(rid)
         conn.execute(f'UPDATE records SET {",".join(fields)} WHERE id=?', vals)
