@@ -248,6 +248,14 @@ def index():
     return render_template("board.html", me=current_user(), page="board", role_names=ROLE_NAMES)
 
 
+@app.route("/account")
+@login_required
+def account():
+    """所有登录角色的账户设置页面，统一各模块的密码修改入口。"""
+    return render_template("account.html", me=current_user(),
+                           page="account", role_names=ROLE_NAMES)
+
+
 @app.route("/manage")
 @login_required
 def manage():

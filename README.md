@@ -45,7 +45,7 @@ for file in static/*.js; do node --check "$file"; done
 
 详细功能清单、P0/P1 缺陷、UI 规范、接口权限矩阵和部署验收表见 [功能审计与重构设计](docs/technical/重构规划与功能审计.md)。
 
-本次引入 `static/ui.css`，并将管理、资金和发票页面的 JS 拆成 `static/manage.js`、`static/funds.js`、`static/invoices.js`，页面由独立 CSS/JS 组织，便于持续维护。
+本次引入 `static/ui.css`，并将管理、资金和发票页面的 JS 拆成 `static/manage.js`、`static/funds.js`、`static/invoices.js`，新增 `static/account.js` 和 `templates/account.html` 统一账户入口；页面由独立 CSS/JS 组织，便于持续维护。
 
 资金审批仅允许配置在 `FUNDS_REVIEWERS` 环境变量内的管理员/项管操作（默认 `chy`）。修改已审核记录会使其重新待审。新增 `/invoices/api/export/download` 提供直接下载 CSV，原 JSON 导出接口保持兼容。
 

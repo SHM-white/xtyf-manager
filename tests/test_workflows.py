@@ -20,12 +20,19 @@ class TestWorkflows(unittest.TestCase):
             ('/manage', '/static/manage.js'),
             ('/funds/', '/static/funds.js'),
             ('/invoices/', '/static/invoices.js'),
+            ('/account', '/static/account.js'),
         ):
             response = self.admin.get(url)
             self.assertEqual(response.status_code, 200, url)
             self.assertIn(fragment, response.get_data(as_text=True), url)
-        for asset in ('ui.css', 'funds.js', 'invoices.js', 'manage.js'):
+        for asset in ('ui.css', 'funds.js', 'invoices.js', 'manage.js', 'account.js'):
             self.assertEqual(self.admin.get('/static/' + asset).status_code, 200)
+
+    def test_account_password_validation(self):
+        bad = self.admin.post('/api/password', json={
+            'old': 'wrong-password', 'new': 'new-password-123',
+        })
+        self.assertEqual(bad.status_code, 400)
 
     def test_funds_invalid_and_review_permission(self):
         bad = self.admin.post('/funds/api/records', json={

@@ -118,3 +118,20 @@ tbody tr:hover td {background:#f8faff;}
  .modal-content{max-width:calc(100vw - 24px);}
 }
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;transition-duration:.01ms!important;}}
+
+/* Account */
+.ux-account-grid{display:grid;grid-template-columns:minmax(260px,.75fr) minmax(0,1.25fr);gap:18px;align-items:start;}
+.ux-account-profile{display:flex;flex-direction:column;gap:12px;}
+.ux-account-avatar{display:grid;place-items:center;width:66px;height:66px;border-radius:19px;
+  background:linear-gradient(145deg,#3769d9,#13a5a3);color:#fff;font-size:30px;font-weight:750;
+  box-shadow:0 12px 26px rgba(42,100,170,.20);}
+.ux-account-info{margin:0;display:grid;grid-template-columns:88px minmax(0,1fr);gap:12px;font-size:13px;}
+.ux-account-info dt{color:var(--ux-muted);}.ux-account-info dd{margin:0;font-weight:600;overflow-wrap:anywhere;}
+.ux-account-form{display:flex;flex-direction:column;gap:14px;max-width:460px;}
+.ux-account-form label{display:flex;flex-direction:column;gap:6px;color:var(--ux-muted);font-weight:600;}
+.ux-account-form .btn{align-self:flex-start;}
+.ux-account-result{font-size:13px;min-height:22px;color:var(--ux-green);}
+.ux-account-result.error{color:var(--ux-danger);}
+.ux-skip-link{position:absolute;top:-70px;left:16px;z-index:1000;background:#fff;padding:10px;border-radius:8px}
+.ux-skip-link:focus{top:8px;}
+@media(max-width:760px){.ux-account-grid{grid-template-columns:1fr;}}

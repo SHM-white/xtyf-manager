@@ -24,10 +24,11 @@
       <a href="/invoices/">我的发票</a>
       {% endif %}
       <a href="{{ url_for('export_csv') }}">导出CSV</a>
+      <a href="{{ url_for('account') }}" class="{% if page == 'account' %}active{% endif %}">账户</a>
     </nav>
     <div class="userbox">
       <span class="who">{{ me.name }}{% if me.role != 'member' %} · {{ role_names[me.role] }}{% endif %}</span>
-      <button class="btn ghost sm" id="btn-password" type="button">改密码</button>
+      <a class="btn ghost sm" href="{{ url_for('account') }}">账户设置</a>
       <a class="btn ghost sm" href="{{ url_for('logout') }}">退出</a>
     </div>
     {% endif %}
