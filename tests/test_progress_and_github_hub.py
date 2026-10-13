@@ -139,7 +139,7 @@ class GitHubGatewayTests(unittest.TestCase):
 
     def test_auth_and_post_validation_with_server_token(self):
         anonymous = app_module.app.test_client()
-        self.assertEqual(anonymous.get("/discussions/api/items").status_code, 302)
+        self.assertEqual(anonymous.get("/discussions/api/items").status_code, 401)
         app_module.app.config["GITHUB_TOKEN"] = "ci-test-token"
         app_module.app.config["GITHUB_WRITE_ENABLED"] = "1"
         self.assertEqual(self.client.post("/discussions/api/post", json={
