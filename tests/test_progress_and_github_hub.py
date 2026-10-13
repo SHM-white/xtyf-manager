@@ -90,14 +90,22 @@ class TaskProgressTests(unittest.TestCase):
         }, content_type="multipart/form-data")
         self.assertEqual(browser_empty_file.status_code, 200, browser_empty_file.get_json())
 
+        # A note-only update must also work with no screenshots selected.
+        note_only = self.admin.post(url, data={
+            "progress": "45", "version": str(browser_empty_file.get_json()["version"]),
+            "note": "只补充本次工作说明", "files": (io.BytesIO(b""), ""),
+        }, content_type="multipart/form-data")
+        self.assertEqual(note_only.status_code, 200, note_only.get_json())
+
         history = self.admin.get(url).get_json()["updates"]
-        self.assertEqual([item["progress"] for item in history[:2]], [45, 25])
+        self.assertEqual([item["progress"] for item in history[:3]], [45, 45, 25])
+        self.assertEqual(history[0]["note"], "只补充本次工作说明")
         self.assertEqual(history[0]["images"], [])
         self.assertEqual(history[1]["images"], [])
         current = next(item for item in self.admin.get("/api/data").get_json()["tasks"]
                        if item["id"] == task["id"])
         self.assertEqual(current["progress"], 45)
-        self.assertEqual(current["version"], new_version + 1)
+        self.assertEqual(current["version"], new_version + 2)
 
     def test_unauthorized_member_cannot_update_progress(self):
         task = self.new_task()
