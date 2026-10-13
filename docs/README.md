@@ -13,6 +13,8 @@
 
 ## 现行技术参考
 
+- [PR 自动网页预览与服务器接入](technical/PR预览部署.md)：VPS + Docker + GitHub Actions，独立数据、DNS、SSH Secrets 和自动清理。
+
 - [系统架构与技术说明](technical/系统架构与技术说明.md)：数据流、模块、业务规则、数据库及主要 API。
 - [配置与权限参考](technical/配置与权限参考.md)：运行时环境变量、角色矩阵、安全限制。
 - [TODO 实现与迁移说明](technical/TODO实现与迁移说明.md)：原始六项需求对应的当前实现，以及 v1～v3 迁移。

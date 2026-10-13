@@ -45,6 +45,10 @@
     docs/usage/          面向成员和管理员的操作手册
     docs/technical/      架构、开发、配置、运维与恢复
 
+## PR 实时预览
+
+仓库提供基于现有 VPS、Docker、GitHub Actions 的独立 PR 预览方案：同仓库 PR 通过回归检查后自动部署，每个 PR 有独立网址和测试数据库；关闭时自动清理。**服务器、DNS 和 GitHub Secrets 需管理员首次配置；未配置前不会自动上线。**详见[PR 预览部署操作手册](docs/technical/PR预览部署.md)。
+
 ## 验证
 
 与 `.github/workflows/ci.yml` 对齐：

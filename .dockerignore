@@ -1,0 +1,16 @@
+.git
+.github
+.venv
+venv
+__pycache__
+**/__pycache__
+*.pyc
+*.db
+*.db-*
+*.sqlite*
+secret.key
+data
+backups
+.env
+.env.*
+*.log

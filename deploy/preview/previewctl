@@ -1,0 +1,147 @@
+#!/usr/bin/env bash
+# 安装在预览服务器上的固定可信命令。工作流不得执行 PR 内版本的此脚本。
+set -Eeuo pipefail
+[[ "$(id -u)" -eq 0 ]] || { echo "必须由 root 调用" >&2; exit 1; }
+ACTION="${1:-}"
+PR="${2:-}"
+[[ "$PR" =~ ^[1-9][0-9]{0,5}$ ]] || { echo "无效的 PR 编号" >&2; exit 2; }
+[[ "$ACTION" == deploy || "$ACTION" == delete ]] || { echo "只支持 deploy/delete" >&2; exit 2; }
+
+CONFIG=/etc/xtyf-preview
+ROOT=/var/lib/xtyf-preview
+NETWORK=xtyf-preview-net
+GATEWAY=xtyf-preview-gateway
+source "$CONFIG/config"
+[[ "$PREVIEW_BASE_DOMAIN" =~ ^[a-z0-9][a-z0-9.-]*[a-z0-9]$ ]] || exit 2
+CONF_FILE="$CONFIG/conf.d/pr-$PR.conf"
+VOLUME="xtyf-preview-pr-$PR-data"
+mkdir -p "$ROOT/build"
+
+reload_gateway() {
+  docker exec "$GATEWAY" nginx -t && docker exec "$GATEWAY" nginx -s reload
+}
+pr_containers() {
+  docker ps -aq --filter "label=xtyf.preview.pr=$PR"
+}
+remove_old_images() {
+  local keep="${1:-}" img
+  while IFS= read -r img; do
+    [[ -z "$img" || "$img" == "$keep" ]] && continue
+    docker image rm "$img" >/dev/null 2>&1 || true
+  done < <(docker images --no-trunc -q --filter "label=xtyf.preview.pr=$PR" | sort -u)
+}
+
+if [[ "$ACTION" == delete ]]; then
+  rm -f "$CONF_FILE"
+  reload_gateway
+  while IFS= read -r id; do
+    [[ -z "$id" ]] || docker rm -f "$id" >/dev/null
+  done < <(pr_containers)
+  docker volume rm "$VOLUME" >/dev/null 2>&1 || true
+  remove_old_images
+  echo "PR #$PR 预览容器、路由和测试数据库已清理"
+  exit 0
+fi
+
+SHA="${3:-}"
+ARCHIVE="${4:-}"
+[[ "$SHA" =~ ^[a-fA-F0-9]{40}$ ]] || { echo "无效的 commit SHA" >&2; exit 2; }
+# 仅接收部署账户家目录中的 CI tar 包；禁止任意文件路径被 Docker 构建读取。
+[[ "$ARCHIVE" =~ ^/home/[^/]+/\.xtyf-preview-incoming/pr-$PR-[0-9]+\.tar\.gz$ ]] \
+  || { echo "归档路径不符合约定" >&2; exit 2; }
+[[ -f "$ARCHIVE" && ! -L "$ARCHIVE" ]] || exit 2
+[[ -n "${SUDO_USER:-}" && "${SUDO_USER:-root}" != root ]] \
+  || { echo "必须由专用 SSH 用户通过 sudo 调用" >&2; exit 2; }
+
+# 拒绝压缩包中有绝对路径或 .. 逃逸；以非 root 身份解压，避免影响主机文件。
+while IFS= read -r entry; do
+  case "$entry" in
+    /*|../*|*/../*|*/..) echo "不安全的归档路径" >&2; exit 2 ;;
+  esac
+done < <(tar -tzf "$ARCHIVE")
+BUILD_DIR="$(mktemp -d "$ROOT/build/pr-$PR.XXXXXXXX")"
+chown "$SUDO_USER" "$BUILD_DIR"
+NEW=""
+SUCCESS=0
+finish() {
+  if [[ "$SUCCESS" -ne 1 && -n "$NEW" ]]; then
+    docker rm -f "$NEW" >/dev/null 2>&1 || true
+  fi
+  rm -rf -- "$BUILD_DIR"
+}
+trap finish EXIT
+runuser -u "$SUDO_USER" -- tar --no-same-owner --no-same-permissions -xzf "$ARCHIVE" -C "$BUILD_DIR"
+
+TAG="xtyf-preview:pr-$PR-${SHA:0:12}"
+NEW="xtyf-preview-pr-$PR-${SHA:0:10}-$(date +%s%N)"
+docker build --file "$CONFIG/Dockerfile" --label "xtyf.preview.pr=$PR" \
+  --tag "$TAG" "$BUILD_DIR"
+
+docker run -d --name "$NEW" --restart unless-stopped \
+  --label "xtyf.preview.pr=$PR" --label "xtyf.preview.sha=$SHA" \
+  --network "$NETWORK" --read-only --cap-drop ALL \
+  --security-opt no-new-privileges --pids-limit 192 --memory 768m --cpus 1 \
+  --tmpfs /tmp:rw,nosuid,nodev,size=64m \
+  --mount "type=volume,source=$VOLUME,target=/var/lib/xtyf-preview" \
+  --env-file "$CONFIG/app.env" \
+  --env "PREVIEW_PR_NUMBER=$PR" --env "PREVIEW_COMMIT_SHA=$SHA" \
+  --env "PROGRESS_DB=/var/lib/xtyf-preview/data.db" \
+  --env "PROGRESS_SECRET_PATH=/var/lib/xtyf-preview/secret.key" \
+  --env "FUNDS_DIR=/var/lib/xtyf-preview/funds" \
+  --env "INVOICES_DIR=/var/lib/xtyf-preview/invoices" \
+  --env "TASK_ATTACHMENTS_DIR=/var/lib/xtyf-preview/task-attachments" \
+  "$TAG" >/dev/null
+
+READY=0
+for attempt in $(seq 1 40); do
+  if docker exec "$NEW" python -c "import urllib.request; assert urllib.request.urlopen('http://127.0.0.1:8520/login', timeout=2).status == 200" >/dev/null 2>&1; then
+    READY=1
+    break
+  fi
+  sleep 2
+done
+if [[ "$READY" != 1 ]]; then
+  echo "预览容器未通过 /login 健康检查" >&2
+  docker logs --tail 80 "$NEW" >&2
+  exit 1
+fi
+
+# 容器已健康才切换 Nginx 路由，旧实例在路由切换成功前仍提供服务。
+BACKUP="$(mktemp)"
+if [[ -f "$CONF_FILE" ]]; then cp "$CONF_FILE" "$BACKUP"; fi
+cat > "$CONF_FILE.tmp" <<CONF
+server {
+    listen 80;
+    server_name pr-$PR.$PREVIEW_BASE_DOMAIN;
+    client_max_body_size 200m;
+    auth_basic "xtyf PR preview";
+    auth_basic_user_file /etc/nginx/.htpasswd;
+    location / {
+        proxy_pass http://$NEW:8520;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 120s;
+        proxy_buffering off;
+    }
+}
+CONF
+mv "$CONF_FILE.tmp" "$CONF_FILE"
+if ! reload_gateway; then
+  if [[ -s "$BACKUP" ]]; then mv "$BACKUP" "$CONF_FILE"; else rm -f "$CONF_FILE"; fi
+  reload_gateway || true
+  echo "切换预览网关失败，已尝试恢复旧路由" >&2
+  exit 1
+fi
+rm -f "$BACKUP"
+SUCCESS=1
+
+while IFS= read -r old; do
+  [[ -z "$old" || "$old" == "$(docker inspect -f '{{.Id}}' "$NEW" | cut -c1-12)" ]] && continue
+  docker rm -f "$old" >/dev/null
+done < <(pr_containers)
+keep_id="$(docker image inspect -f '{{.Id}}' "$TAG")"
+remove_old_images "$keep_id"
+echo "PR #$PR 已部署 commit $SHA"
