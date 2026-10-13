@@ -114,7 +114,7 @@ def _graphql(query: str, variables: dict | None = None):
 # although unlike GraphQL it does not expose discussion comments or counts.
 _ATOM_NS = "{http://www.w3.org/2005/Atom}"
 _ATOM_MAX_BYTES = 1_000_000
-_DISCUSSION_LINK = re.compile(r"^https://github\\.com/([^/]+)/([^/]+)/discussions/([1-9][0-9]*)/?$")
+_DISCUSSION_LINK = re.compile(r"^https://github\.com/([^/]+)/([^/]+)/discussions/([1-9][0-9]*)/?$")
 
 
 class _PlainText(HTMLParser):
@@ -127,7 +127,7 @@ class _PlainText(HTMLParser):
 
     def handle_starttag(self, tag: str, attrs):
         if tag in ("p", "br", "div", "li", "h1", "h2", "h3"):
-            self.parts.append("\\n")
+            self.parts.append("\n")
 
 
 def _atom_items(feed: bytes, repo: str) -> list[dict]:
@@ -145,7 +145,9 @@ def _atom_items(feed: bytes, repo: str) -> list[dict]:
         if match is None or match.group(1) + "/" + match.group(2) != repo:
             continue
         raw_body = entry.findtext(_ATOM_NS + "content") or entry.findtext(_ATOM_NS + "summary") or ""
-        body_type = (entry.find(_ATOM_NS + "content") or entry.find(_ATOM_NS + "summary"))
+        body_type = entry.find(_ATOM_NS + "content")
+        if body_type is None:
+            body_type = entry.find(_ATOM_NS + "summary")
         if body_type is not None and body_type.get("type") == "html":
             parser = _PlainText()
             parser.feed(raw_body[:200_000])
