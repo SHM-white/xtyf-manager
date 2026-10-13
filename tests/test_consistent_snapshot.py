@@ -107,6 +107,23 @@ class TestConsistentSnapshot(unittest.TestCase):
             restore_snapshot(broken, target)
         self.assertFalse(target.exists())
 
+    def test_symlinked_data_parent_and_recursive_output_are_rejected(self):
+        from shutil import move
+
+        (self.root / "data/funds" / "nested.txt").write_text("synthetic", encoding="utf-8")
+        inside = self.root / "data/funds" / "full.zip"
+        with patch("deploy.consistent_snapshot.service_is_active", return_value=False):
+            with self.assertRaisesRegex(SnapshotError, "数据目录"):
+                create_snapshot(self.root, inside, offline_confirmed=True)
+        outside = Path(self.temp.name) / "elsewhere-data"
+        move(str(self.root / "data"), str(outside))
+        try:
+            (self.root / "data").symlink_to(outside, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            self.skipTest("filesystem does not support symlinks")
+        with self.assertRaisesRegex(SnapshotError, "符号链接"):
+            self.create()
+
     def test_symlink_and_missing_secret_are_rejected(self):
         (self.root / "secret.key").unlink()
         with self.assertRaises(SnapshotError):

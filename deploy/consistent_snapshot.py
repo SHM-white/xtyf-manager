@@ -57,11 +57,22 @@ def _regular(path: Path) -> None:
         raise SnapshotError(f"备份源包含符号链接或非普通文件：{path}")
 
 
+def _refuse_symlink_parents(root: Path, relative: str) -> None:
+    """Reject indirection at every level, not just the last path component."""
+    current = root
+    for part in PurePosixPath(relative).parts:
+        current = current / part
+        if current.is_symlink():
+            raise SnapshotError(f"备份源路径不可穿越符号链接：{current}")
+
+
 def _collect(root: Path) -> list[str]:
     for required in REQUIRED:
+        _refuse_symlink_parents(root, required)
         _regular(root / required)
     paths = set(REQUIRED)
     for directory in DIRECTORIES:
+        _refuse_symlink_parents(root, directory)
         source = root / directory
         if source.is_symlink():
             raise SnapshotError(f"备份目录不能是符号链接：{source}")
@@ -118,6 +129,8 @@ def create_snapshot(root: Path, output: Path, *, offline_confirmed: bool = False
     root, output = Path(root).resolve(), Path(output).absolute()
     if not offline_confirmed:
         raise SnapshotError("须先停止所有写入进程并显式指定 --offline-confirmed")
+    if any(output.is_relative_to(root / directory) for directory in DIRECTORIES):
+        raise SnapshotError("备份目标不能放在受备份的数据目录内，避免下次快照递归收录")
     if service_is_active():
         raise SnapshotError("rm-progress 服务仍在运行：必须停止服务后再生成一致性快照")
     if output.exists() or output.is_symlink():
