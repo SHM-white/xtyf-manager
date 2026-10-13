@@ -134,7 +134,7 @@ query($owner:String!, $name:String!) {
   repository(owner:$owner,name:$name) {
     discussions(first:30,orderBy:{field:UPDATED_AT,direction:DESC}) {
       nodes { id number title bodyText updatedAt url author { login }
-              category { name } comments { totalCount } }
+              category { name } comments(first:1) { totalCount } }
     }
     discussionCategories(first:50) { nodes { id name } }
   }
@@ -145,7 +145,7 @@ query($owner:String!, $name:String!, $number:Int!) {
   repository(owner:$owner,name:$name) {
     discussion(number:$number) {
       id number title bodyText updatedAt url author { login } category { name }
-      comments { totalCount }
+      comments(first:1) { totalCount }
       commentsPage:comments(first:50) {
         nodes { id bodyText createdAt author { login }
           replies(first:20) { nodes { id bodyText createdAt author { login } } }
@@ -179,8 +179,7 @@ def _comments(nodes: list[dict]) -> list[dict]:
     return comments
 
 
-@discussions_bp.get("")
-@discussions_bp.get("/")
+@discussions_bp.route("", strict_slashes=False)
 @login_required
 def index():
     repo = _repository()
