@@ -470,7 +470,7 @@ def export_csv():
         w.writerow([safe_csv_cell(value) for value in
                     (d["id"], d["record_type"], format_cents(d["amount_cents"]), d["category"],
                      d["source_dest"], d["applicant"], d["invoice_count"],
-                     d["handler"], d["record_date"], review, d["notes"], d["created_at"]]) ]
+                     d["handler"], d["record_date"], review, d["notes"], d["created_at"])])
     out.seek(0)
     buf = io.BytesIO()
     buf.write(out.getvalue().encode("utf-8-sig"))
