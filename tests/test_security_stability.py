@@ -194,6 +194,51 @@ class TestSecurityAndStability(unittest.TestCase):
             self.assertEqual(persisted["提交人"], "'" + injected)
 
 
+class TestSessionSecretPermissions(unittest.TestCase):
+    def test_generated_key_is_private_and_stable(self):
+        import stat
+        import tempfile
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, "secret.key")
+            with patch.object(app_module, "SECRET_PATH", path):
+                original = app_module._load_secret()
+                self.assertEqual(len(original), 64)
+                self.assertEqual(app_module._load_secret(), original)
+                if os.name == "posix":
+                    self.assertEqual(stat.S_IMODE(os.stat(path).st_mode), 0o600)
+
+    def test_existing_key_mode_is_restricted_without_rotation(self):
+        import stat
+        import tempfile
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, "secret.key")
+            with open(path, "w", encoding="utf-8") as stream:
+                stream.write("a" * 64)
+            if os.name == "posix":
+                os.chmod(path, 0o644)
+            with patch.object(app_module, "SECRET_PATH", path):
+                self.assertEqual(app_module._load_secret(), "a" * 64)
+                if os.name == "posix":
+                    self.assertEqual(stat.S_IMODE(os.stat(path).st_mode), 0o600)
+
+    def test_empty_key_never_silently_regenerates(self):
+        import tempfile
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, "secret.key")
+            with open(path, "w", encoding="utf-8"):
+                pass
+            with patch.object(app_module, "SECRET_PATH", path):
+                with self.assertRaises(RuntimeError):
+                    app_module._load_secret()
+            self.assertEqual(os.stat(path).st_size, 0)
+
+
 class TestLegacyFundsMigrations(unittest.TestCase):
     def setUp(self):
         self.conn = sqlite3.connect(":memory:")
