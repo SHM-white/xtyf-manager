@@ -108,6 +108,8 @@ test("task tree: matching child retains ancestors without infinite loops", () =>
                  { id: 2, title: "循环乙", parent_id: 1 }];
   const cyclic = page.value("treeVisibleSet")([state.tasks[0]]);
   assert.equal(cyclic.visible.size, 2);
+  state.expanded.add(1);
+  state.expanded.add(2);
   assert.ok(page.value("renderTree")(state.tasks).includes("检测到循环关系"));
 });
 

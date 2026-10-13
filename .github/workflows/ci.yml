@@ -41,6 +41,7 @@ jobs:
             coverage xml -o coverage.xml
             coverage json -o coverage.json
             python -c 'import json,os; p=json.load(open("coverage.json"))["totals"]["percent_covered_display"]; open(os.environ["GITHUB_STEP_SUMMARY"],"a").write("## Python branch coverage\n\nTotal: **"+p+"%**\n")'
+            coverage report --fail-under=65
           fi
       - name: Upload coverage XML
         if: always()

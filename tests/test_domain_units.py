@@ -134,7 +134,7 @@ class TestLedgerUnits(unittest.TestCase):
         ok, reason = validate_expense_fields({})
         self.assertFalse(ok)
         self.assertIn("发票数目", reason)
-        for value in (0, -1, True, "1.1", Decimal("1.5"), "1e2"):
+        for value in (-1, True, "1.1", Decimal("1.5"), "1e2"):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 _validated_count(value)
         for value in (0, "03", 2, Decimal("2.0"), MAX_SQLITE_INTEGER):
