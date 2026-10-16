@@ -57,6 +57,7 @@ jobs:
           name: python-coverage-${{ matrix.os }}
           path: coverage.xml
           if-no-files-found: ignore
+          include-hidden-files: true
 
   javascript:
     name: JavaScript unit + syntax
@@ -101,11 +102,16 @@ jobs:
           REVIEW_PYTHON: python
         run: |
           set -euo pipefail
+          failures=0
           for suite in review_fixes pr22_merge task_center daily_mail action_failures login_mobile palette_workspace local_collaboration; do
             echo "::group::Browser test: ${suite}"
-            node "tests/browser/${suite}.cjs"
+            if ! node "tests/browser/${suite}.cjs"; then
+              echo "::error::Browser suite ${suite} failed"
+              failures=$((failures + 1))
+            fi
             echo "::endgroup::"
           done
+          exit "$((failures > 0))"
       - name: Upload browser diagnostics
         if: always()
         uses: actions/upload-artifact@v4
