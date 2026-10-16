@@ -249,6 +249,14 @@ class DailyMailTest(unittest.TestCase):
                 self.assertEqual(process_job(self.db,job,morning,transport),'skipped')
         transport.assert_not_called()
 
+    def test_verification_and_test_mail_take_priority_over_digest(self):
+        self.db.execute("UPDATE mail_jobs SET state='skipped' WHERE state='pending'");self.db.commit()
+        generation=self.bind()
+        for kind in ('daily','test','verify'):
+            queue(self.db,self.mid,kind,self.at.date().isoformat(),generation,self.at.timestamp(),uuid4().hex)
+        self.db.commit()
+        self.assertEqual([claim(self.db,self.at)['kind'] for _ in range(3)],['verify','test','daily'])
+
     def test_verification_expiry_replay_and_wrong_account(self):
         result=self.member.post('/api/account/email/request',json={'email':'member@example.com'});self.assertEqual(result.status_code,202)
         row=self.db.execute('SELECT * FROM member_email WHERE member_id=?',(self.mid,)).fetchone()

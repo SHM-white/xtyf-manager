@@ -47,7 +47,7 @@ async function api(page,url,data){return page.evaluate(async({url,data})=>{const
     const query=spawnSync(python,['-c',"import sqlite3,sys; db=sqlite3.connect(sys.argv[1]); print(db.execute('SELECT generation FROM member_email WHERE member_id=1').fetchone()[0])",path.join(testRoot,'data.db')],{encoding:'utf8'});assert.equal(query.status,0,query.stderr);
     const digest=crypto.createHmac('sha256',fs.readFileSync(path.join(testRoot,'secret.key'),'utf8').trim()).update('email-code:'+query.stdout.trim()).digest();
     const code=String(Number(digest.readBigUInt64BE(0)%1000000n)).padStart(6,'0');
-    assert.equal(await page.locator('#email-code-form').isVisible(),true);
+    await page.locator('#email-code-form').waitFor({state:'visible'});
     await page.locator('#email-code').fill(code);
     await page.locator('#email-code-form button').click();
     await page.locator('#email-result').filter({hasText:'邮箱已验证'}).waitFor();
