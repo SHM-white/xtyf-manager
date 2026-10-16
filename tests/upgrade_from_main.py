@@ -52,9 +52,10 @@ try:
         "INSERT INTO member_email(member_id,address,verified,paused,generation,requested_at) "
         "VALUES(1,'verified@example.test',1,1,'verified-existing',?)", (now-300,))
     old_generation = "legacy-link-pending"
-    old_hash = (hashlib.sha256(mail_service.verification_token(old_generation).encode()).hexdigest()
-                if legacy_link else mail_service.verification_digest(
-                    old_generation, mail_service.verification_code(old_generation)))
+    with app.app.app_context():
+        old_hash = (hashlib.sha256(mail_service.verification_token(old_generation).encode()).hexdigest()
+                    if legacy_link else mail_service.verification_digest(
+                        old_generation, mail_service.verification_code(old_generation)))
     db.execute(
         "INSERT INTO member_email(member_id,address,verified,paused,generation,token_hash,expires_at,requested_at) "
         "VALUES(2,'old-unverified@example.test',0,0,?,?,?,?)",
@@ -119,8 +120,10 @@ try:
     else:
         # On subsequent PRs, a valid numeric-code challenge must survive unchanged.
         from modules.mail_service import verification_digest
-        assert unverified["token_hash"] == verification_digest(
-            unverified["generation"], verification_code(unverified["generation"]))
+        with app.app.app_context():
+            expected_hash = verification_digest(
+                unverified["generation"], verification_code(unverified["generation"]))
+        assert unverified["token_hash"] == expected_hash
         assert unverified["expires_at"] > 0
     assert unverified["verify_attempts"] == 0
     no_token = connection.execute("SELECT * FROM member_email WHERE member_id=3").fetchone()
@@ -214,14 +217,13 @@ class UpgradeFromMainTests(unittest.TestCase):
                 ("upgrade and exercise PR verification", REPO, CHECK_UPGRADED_DATABASE),
                 ("restart upgraded version", REPO, CHECK_RESTART),
             ):
-                with self.subTest(stage=label):
-                    done = subprocess.run(
-                        [sys.executable, "-c", textwrap.dedent(source)],
-                        cwd=checkout, env=env, capture_output=True, text=True,
-                        timeout=120,
-                    )
-                    self.assertEqual(done.returncode, 0,
-                        f"{label} failed (exit {done.returncode})\nstdout:\n{done.stdout}\nstderr:\n{done.stderr}")
+                done = subprocess.run(
+                    [sys.executable, "-c", textwrap.dedent(source)],
+                    cwd=checkout, env=env, capture_output=True, text=True,
+                    timeout=120,
+                )
+                self.assertEqual(done.returncode, 0,
+                    f"{label} failed (exit {done.returncode})\nstdout:\n{done.stdout}\nstderr:\n{done.stderr}")
 
 
 if __name__ == "__main__":
