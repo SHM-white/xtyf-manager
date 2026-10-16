@@ -504,13 +504,24 @@ class DailyMailTest(unittest.TestCase):
         self.assertEqual(process_job(self.db,job,self.at-timedelta(seconds=1),not_called),'skipped')
         not_called.assert_not_called()
 
-    def test_transient_retry_permanent_unknown_and_limit(self):
+    def test_test_mail_transient_retry_permanent_unknown_and_limit(self):
         job=self.job();transport=MagicMock(side_effect=DeliveryError('暂时失败',retry=True))
         self.assertEqual(process_job(self.db,job,self.at,transport),'pending')
-        self.assertEqual(self.db.execute('SELECT next_at FROM mail_jobs WHERE id=?',(job['id'],)).fetchone()[0],self.at.timestamp()+900)
+        self.assertEqual(self.db.execute('SELECT next_at FROM mail_jobs WHERE id=?',(job['id'],)).fetchone()[0],self.at.timestamp()+60)
         self.assertEqual(process_job(self.db,job|{'attempts':3},self.at,transport),'failed')
         self.assertEqual(process_job(self.db,job,self.at,MagicMock(side_effect=DeliveryError('收件人拒绝'))),'failed')
         self.assertEqual(process_job(self.db,job,self.at,MagicMock(side_effect=DeliveryError('未知','unknown'))),'unknown')
+
+    def test_verification_mail_retry_is_fast_and_bounded(self):
+        response=self.member.post('/api/account/email/request',json={'email':'fast@example.com'})
+        self.assertEqual(response.status_code,202,response.get_json())
+        job=dict(self.db.execute("SELECT * FROM mail_jobs WHERE member_id=? AND kind='verify' ORDER BY id DESC LIMIT 1",(self.mid,)).fetchone())|{'attempts':1}
+        now=datetime.now(TZ)
+        transport=MagicMock(side_effect=DeliveryError('临时失败',retry=True))
+        self.assertEqual(process_job(self.db,job,now,transport),'pending')
+        state=self.db.execute("SELECT next_at,attempts FROM mail_jobs WHERE id=?",(job['id'],)).fetchone()
+        self.assertEqual(state['next_at'],now.timestamp()+60)
+        self.assertEqual(process_job(self.db,job|{'attempts':3},now,transport),'failed')
 
     def test_changed_email_paused_and_inactive_are_checked_at_send(self):
         job=self.job();transport=MagicMock()
