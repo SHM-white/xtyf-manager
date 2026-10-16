@@ -84,13 +84,13 @@ class MailInstallerTests(unittest.TestCase):
 
 class MailDeploymentIntegrationTests(unittest.TestCase):
     def test_deploy_preserves_legacy_environment_and_installs_disabled_units(self):
-        content = (Path(__file__).resolve().parents[1] / "deploy/deploy.sh").read_text()
+        content = (Path(__file__).resolve().parents[1] / "deploy/deploy.sh").read_text(encoding="utf-8")
         self.assertIn("--exclude mail.env", content)
         self.assertIn("deploy/install_mail.py", content)
         self.assertNotIn("systemctl enable rm-mail.timer", content)
 
     def test_updater_suspends_mail_before_backup_and_preserves_legacy_file(self):
-        content = (Path(__file__).resolve().parents[1] / "deploy/update_release.py").read_text()
+        content = (Path(__file__).resolve().parents[1] / "deploy/update_release.py").read_text(encoding="utf-8")
         self.assertLess(content.index("suspend_mail()"), content.index("create_snapshot(APP,"))
         self.assertIn("'mail.env'", content)
         self.assertIn("install_mail(APP, account.pw_name)", content)
