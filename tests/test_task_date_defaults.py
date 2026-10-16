@@ -35,6 +35,33 @@ class TaskDateDefaults(unittest.TestCase):
         for bad in ('', None, '2026-02-30', '2026-3-01', '0001-01-01'):
             self.assertIsNone(dependency_start_date(bad))
 
+    def test_overlapping_predecessor_dates_are_valid_and_real_warnings_remain(self):
+        parent = self.create(due_date='2026-11-03')
+        # Both an explicit early date and the suggested two-day overlap are valid.
+        early = self.create(parent_id=parent['id'], start_date='2026-10-01', due_date='2026-11-08')
+        suggested = self.create(parent_id=parent['id'], due_date='2026-11-08')
+        self.assertEqual(self.task(suggested['id'])['start_date'], '2026-11-01')
+        for task_id in (early['id'], suggested['id']):
+            self.assertEqual(self.task(task_id)['dependency_warnings'], [])
+
+        # An actually blocked or cancelled predecessor still needs attention.
+        endpoint = f"/api/task/{parent['id']}"
+        self.assertEqual(self.admin.post(endpoint, json={'version': 1, 'status': '阻塞'}).status_code, 200)
+        self.assertTrue(any('已阻塞' in warning for warning in self.task(early['id'])['dependency_warnings']))
+        self.assertEqual(self.admin.post(endpoint, json={
+            'version': 2, 'status': '进行中', 'due_date': ''
+        }).status_code, 200)
+        self.assertTrue(any('未设置截止日期' in warning
+                            for warning in self.task(early['id'])['dependency_warnings']))
+        self.assertEqual(self.admin.post(endpoint, json={'version': 3, 'status': '已取消'}).status_code, 200)
+        self.assertTrue(any('已取消' in warning for warning in self.task(early['id'])['dependency_warnings']))
+
+        # Completing a successor while its predecessor is unfinished is still unusual.
+        pending = self.create(due_date='2026-12-10')
+        completed = self.create(parent_id=pending['id'], due_date='2026-12-20', status='已完成')
+        self.assertTrue(any('尚未完成' in warning
+                            for warning in self.task(completed['id'])['dependency_warnings']))
+
     def test_create_uses_only_main_parent_and_fixes_first_saved_date(self):
         parent = self.create(due_date='2026-11-03')
         other = self.create(due_date='2026-12-10')

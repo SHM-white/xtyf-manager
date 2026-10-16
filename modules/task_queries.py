@@ -120,15 +120,15 @@ def task_data(db: sqlite3.Connection) -> tuple[list[JsonObject], list[JsonObject
             if predecessor is None:
                 warnings.append("前置任务不存在或已删除")
                 continue
+            # Overlapping schedules are normal: successor preparation may start
+            # before the predecessor finishes; a pending task is not a blocker.
             if predecessor["status"] == "已取消":
                 warnings.append(f"前置任务“{predecessor['title']}”已取消")
-            elif predecessor["status"] != "已完成":
+            elif predecessor["status"] == "阻塞":
+                warnings.append(f"前置任务“{predecessor['title']}”已阻塞")
+            elif task["status"] == "已完成" and predecessor["status"] != "已完成":
                 warnings.append(f"前置任务“{predecessor['title']}”尚未完成")
-            pred_due = str(predecessor.get("due_date") or "")
-            if pred_due:
-                if task.get("start_date") and str(task["start_date"]) < pred_due:
-                    warnings.append(f"开始日期早于前置任务“{predecessor['title']}”截止日期")
-            else:
+            if not predecessor.get("due_date"):
                 warnings.append(f"前置任务“{predecessor['title']}”未设置截止日期")
         parent = by_id.get(parent_id)
         task["suggested_start_date"] = dependency_start_date(parent.get("due_date")) if parent else None
