@@ -86,7 +86,7 @@ function taskCard(task, extraClass = "") {
   </article>`;
 }
 function participantLanes(tasks) {
-  const active = state.members.filter((member) => member.role !== "admin").map((member) => ({
+  const active = state.members.map((member) => ({
     key: `m-${member.id}`,
     title: member.name,
     sub: (member.group_names || [member.group_name]).filter(Boolean).join("、"),
@@ -101,7 +101,6 @@ function participantLanes(tasks) {
   );
   historical.forEach((id) => {
     const member = memberById(id);
-    if (member?.role === "admin") return;
     active.push({
       key: `m-${id}`,
       title: member?.name || `成员 #${id}`,
