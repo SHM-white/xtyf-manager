@@ -126,6 +126,38 @@ async function ready(page) { await page.locator('#task-create-panel[open][aria-b
     await page.goto(base+'/daily-projects/'+id);await page.waitForURL(base+'/tasks?type=daily&project='+id);
     await page.locator('.task-type-tabs a').filter({hasText:'造车任务'}).click();await page.locator('#board').waitFor();assert.equal(await page.locator('#daily-app').count(),0);
     checks.push('daily tab retains grouped ownership; legacy URL redirects; switching restores vehicle board');
+    // Assert the actual default card, disclosure and archive behavior in a mixed dataset.
+    await page.waitForFunction(() => state.members.some(member => member.role !== 'admin'));
+    const urgencyUI=await page.evaluate(() => {
+      const memberId=Number(state.members.find(m=>m.role!=='admin').id);
+      state.filters={group:'',project:'',status:'',q:'',mine:false};
+      state.view='person';
+      state.tasks=[
+        {id:901001,title:'无截止主责',owner_id:memberId,status:'阻塞',priority:'高',days_left:null},
+        {id:901002,title:'明天紧急参与',owner_id:901200,participant_ids:[memberId],status:'阻塞',priority:'高',days_left:1},
+        {id:901003,title:'一般总负责',owner_id:memberId,status:'进行中',priority:'低',days_left:7},
+        {id:901004,title:'历史已完成',owner_id:memberId,status:'已完成',priority:'高',days_left:-100},
+      ];
+      renderBoard();
+      const lane=document.querySelector('#lane-m-'+memberId).closest('.person-lane');
+      const initial=Array.from(lane.querySelectorAll('#lane-m-'+memberId+' .task-head h3'),n=>n.textContent);
+      const archiveInitiallyHidden=lane.querySelector('.person-finished').hidden;
+      const firstScore=taskUrgencyScore(state.tasks[1],memberId);
+      lane.querySelector('[data-lane-toggle]').click();
+      const expanded=Array.from(document.querySelectorAll('#lane-m-'+memberId+' .task-head h3'),n=>n.textContent);
+      document.querySelector('#lane-m-'+memberId).closest('.person-lane')
+        .querySelector('[data-lane-finished-toggle]').click();
+      const archived=Array.from(document.querySelector('#lane-m-'+memberId).closest('.person-lane')
+        .querySelectorAll('.person-finished .task-head h3'),n=>n.textContent);
+      return {initial,expanded,archived,archiveInitiallyHidden,firstScore};
+    });
+    assert.deepEqual(urgencyUI.initial,['明天紧急参与']);
+    assert.deepEqual(urgencyUI.expanded,['明天紧急参与','无截止主责','一般总负责']);
+    assert.deepEqual(urgencyUI.archived,['历史已完成']);
+    assert.equal(urgencyUI.archiveInitiallyHidden,true);
+    assert.equal(urgencyUI.firstScore,68);
+    checks.push('mixed member default top, expanded urgency order, and completion archive in DOM');
+
     for(const width of [375,390,767,768,850,1280,1606]) {
       await page.setViewportSize({width,height:900});await page.goto(base+'/');await page.locator('#daily-dashboard .daily-card').waitFor();
       assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true,'dashboard overflow '+width);

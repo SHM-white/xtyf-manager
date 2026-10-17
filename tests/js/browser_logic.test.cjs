@@ -279,7 +279,7 @@ test("archived catalog entries are dictionary-only choices without destroying sa
   assert.equal(page.value("retainArchivedCatalogSelection")("2", 1, items, true), "2");
 });
 
-test("person lanes put unfinished owned work ahead of participant work and fold finished tasks", () => {
+test("person lanes prioritize scored active tasks and fold completed work", () => {
   const page = browser(["app.js", "task-board.js"]), state = page.value("state");
   state.view = "person";
   state.members = [{id:7,name:"小七",role:"member"},{id:2,name:"队友",role:"member"}];
@@ -296,11 +296,11 @@ test("person lanes put unfinished owned work ahead of participant work and fold 
   ];
   const originalIds = state.tasks.map((task) => task.id);
   const lane = page.value("participantLanes")(state.tasks).find((item) => item.key === "m-7");
-  assert.deepEqual(Array.from(lane.tasks, (task) => task.id), [1,4,2,3,7,5,6,9,8]);
+  assert.deepEqual(Array.from(lane.tasks, (task) => task.id), [2,4,5,1,6,3,7,8,9]);
   assert.deepEqual(state.tasks.map((task) => task.id), originalIds);
   let html = page.value("renderPersonLane")(lane);
-  assert.match(html, /主责逾期/);
-  assert.doesNotMatch(html, /主责今天|协助逾期|已完成<\/h3>|已取消<\/h3>/);
+  assert.match(html, /主责明天/);
+  assert.doesNotMatch(html, /主责逾期|主责今天|协助逾期|已完成<\/h3>|已取消<\/h3>/);
   assert.match(html, /展开其余 6 项/);
   assert.match(html, /查看已完成\/取消 2 项/);
   assert.match(html, /id="lane-finished-m-7" hidden/);
@@ -319,7 +319,7 @@ test("person lanes put unfinished owned work ahead of participant work and fold 
   assert.match(page.value("renderPersonLane")(filtered), /已完成<\/h3>/);
 });
 
-test("urgency comparator prioritizes nearest deadline, then priority, without hiding unscheduled work", () => {
+test("urgency comparator weighs priority, deadline and status jointly", () => {
   const page = browser(["app.js", "task-board.js"]);
   const rank = page.value("compareTaskUrgency");
   const items = [
@@ -329,8 +329,89 @@ test("urgency comparator prioritizes nearest deadline, then priority, without hi
     {id:2,owner_id:7,days_left:-2,status:"进行中",priority:"低"},
     {id:1,owner_id:7,days_left:3,status:"阻塞",priority:"高"},
   ];
-  assert.deepEqual(Array.from([...items].sort((a,b) => rank(a,b,7)), x=>x.id), [2,1,4,3,5]);
+  assert.deepEqual(Array.from([...items].sort((a,b) => rank(a,b,7)), x=>x.id), [1,4,2,3,5]);
   assert.deepEqual(items.map(x=>x.id), [5,4,3,2,1]);
   assert.equal(rank({id:1,status:"已完成",days_left:-999,owner_id:7},
     {id:2,status:"进行中",days_left:null,owner_id:3,participant_ids:[7]},7) > 0, true);
+});
+
+test("composite urgency allows an urgent participant task to beat undated ownership", () => {
+  const page=browser(["app.js","task-board.js"]);
+  const score=page.value("taskUrgencyScore"),rank=page.value("compareTaskUrgency");
+  const owner={id:1,owner_id:7,status:"阻塞",priority:"高",days_left:null};
+  const participation={id:2,owner_id:2,participant_ids:[7],status:"阻塞",priority:"高",days_left:1};
+  const lowOwnerToday={id:3,owner_id:7,status:"进行中",priority:"低",days_left:0};
+  const highParticipantToday={id:4,owner_id:2,participant_ids:[7],status:"阻塞",priority:"高",days_left:0};
+  const lowOwnerOverdue={id:5,owner_id:7,status:"进行中",priority:"低",days_left:-3};
+  assert.equal(score(owner,7),56);
+  assert.equal(score(participation,7),68);
+  assert.equal(score(highParticipantToday,7),72);
+  assert.equal(score(lowOwnerOverdue,7),73);
+  assert.ok(rank(participation,owner,7)<0);
+  assert.ok(rank(highParticipantToday,lowOwnerToday,7)<0);
+  assert.ok(rank(lowOwnerOverdue,highParticipantToday,7)<0);
+  assert.equal(page.value("taskResponsibilityWeight")({...owner,participant_ids:[7]},7),28);
+  assert.equal(page.value("taskResponsibilityWeight")(participation,7),8);
+  assert.equal(page.value("taskResponsibilityWeight")(participation,4),0);
+  assert.equal(page.value("taskResponsibilityWeight")(participation,null),0);
+  assert.equal(page.value("taskResponsibilityWeight")(participation,"invalid"),0);
+});
+
+test("composite urgency deadline weights are monotone, capped, and null safe", () => {
+  const page=browser(["app.js"]);
+  const weight=page.value("taskDeadlineWeight");
+  const cases=[-10000,-100,-7,-6,-5,-2,-1,0,1,2,3,4,5,6,7,8,9,14,15,18,29,30,31,100];
+  for(const day of cases) assert.ok(Number.isInteger(weight(day))&&weight(day)>=0&&weight(day)<=44);
+  for(let i=1;i<cases.length;i++) assert.ok(weight(cases[i-1])>=weight(cases[i]),"non-monotone date weight");
+  const expected=[[-10000,44],[-6,44],[-1,39],[0,36],[1,32],[3,24],[4,20],[7,14],
+    [8,12],[14,6],[15,5],[30,0],[31,0]];
+  for(const [day,value] of expected) assert.equal(weight(day),value);
+  for(const invalid of [null,undefined,"","0","2026-10-17",NaN,Infinity,-Infinity,0.5,{},[]])
+    assert.equal(weight(invalid),0,"invalid date must receive no deadline bonus");
+});
+
+test("composite urgency statuses, priorities, closures and equal-score tie breakers", () => {
+  const page=browser(["app.js"]);
+  const score=page.value("taskUrgencyScore"),rank=page.value("compareTaskUrgency");
+  const top={id:1,owner_id:7,status:"阻塞",priority:"高",days_left:-100};
+  assert.equal(score(top,7),100);
+  assert.equal(score({...top,priority:"中"},7),90);
+  assert.equal(score({...top,priority:"低"},7),80);
+  assert.equal(score({...top,status:"进行中"},7),96);
+  assert.equal(score({...top,status:"未开始"},7),92);
+  assert.equal(score({...top,days_left:null,priority:"低",status:"未开始"},7),28);
+  assert.equal(score({...top,days_left:null,priority:"低",status:"未开始"},null),0);
+  assert.equal(score({...top,status:"已完成"},7),0);
+  assert.equal(score({...top,status:"已取消"},7),0);
+  assert.ok(rank({...top,status:"已完成"},{id:2,owner_id:2,status:"未开始",priority:"低",days_left:null},7)>0);
+  assert.ok(rank({...top,status:"已取消"},{id:2,owner_id:2,status:"未开始",priority:"低",days_left:null},7)>0);
+  assert.equal(rank({...top,id:3,days_left:-1000},{...top,id:2,days_left:-6},7),1,
+    "severely overdue tasks should not sort by unbounded age");
+  assert.ok(rank({...top,id:9,priority:"低",days_left:0},
+    {id:10,owner_id:2,participant_ids:[7],status:"阻塞",priority:"高",days_left:0},7)<0,
+    "ownership breaks real score ties");
+  assert.ok(rank({...top,id:20,priority:"高",days_left:1},
+    {...top,id:10,priority:"中",days_left:-4},7)<0,
+    "priority breaks real score ties");
+});
+
+test("composite urgency gives deterministic, transitive ranking for varied task records", () => {
+  const page=browser(["app.js"]);
+  const score=page.value("taskUrgencyScore"),rank=page.value("compareTaskUrgency");
+  const states=["阻塞","进行中","未开始","已完成","已取消"],priorities=["高","中","低"];
+  const deadlines=[-200,-6,-1,0,1,3,7,14,30,null];
+  const tasks=Array.from({length:160},(_,i)=>({
+    id:i+1,owner_id:i%3===0?7:2,participant_ids:i%3===1?[7]:[],
+    status:states[i%5],priority:priorities[(i*7)%3],
+    days_left:deadlines[(i*11+Math.floor(i/10))%deadlines.length],
+  }));
+  const before=tasks.map(x=>x.id),sorted=[...tasks].sort((a,b)=>rank(a,b,7));
+  assert.deepEqual(tasks.map(x=>x.id),before,"sort must not mutate state.tasks");
+  for(const item of tasks) assert.ok(Number.isInteger(score(item,7))&&score(item,7)>=0&&score(item,7)<=100);
+  for(let i=0;i<sorted.length;i++) for(let j=i+1;j<sorted.length;j++) {
+    assert.ok(rank(sorted[i],sorted[j],7)<=0,"comparator is not transitive");
+    assert.ok(rank(sorted[j],sorted[i],7)>=0,"reverse order is inconsistent");
+  }
+  assert.deepEqual(Array.from([...tasks].reverse().sort((a,b)=>rank(a,b,7)),x=>x.id),
+    Array.from(sorted,x=>x.id),"tie-breaking must be input-order independent");
 });
