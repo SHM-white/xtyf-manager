@@ -86,6 +86,26 @@ function isDueSoon(task) {
 function isOverdue(task) {
   return Number.isInteger(task.days_left) && task.days_left < 0 && !["已完成", "已取消"].includes(task.status);
 }
+function isFinishedTask(task) {
+  return task.status === "已完成" || task.status === "已取消";
+}
+function compareTaskUrgency(a, b, memberId = null) {
+  const closedDiff = Number(isFinishedTask(a)) - Number(isFinishedTask(b));
+  if (closedDiff) return closedDiff;
+  const roleRank = (task) => memberId == null ? 0 :
+    Number(task.owner_id) === Number(memberId) ? 0 :
+      taskParticipants(task).includes(Number(memberId)) ? 1 : 2;
+  const roleDiff = roleRank(a) - roleRank(b);
+  if (roleDiff) return roleDiff;
+  const deadline = (task) => Number.isInteger(task.days_left) ? task.days_left : Number.MAX_SAFE_INTEGER;
+  const deadlineDiff = deadline(a) - deadline(b);
+  if (deadlineDiff) return deadlineDiff;
+  const priority = (task) => ({ "高": 0, "中": 1, "低": 2 })[task.priority] ?? 3;
+  const priorityDiff = priority(a) - priority(b);
+  if (priorityDiff) return priorityDiff;
+  const status = (task) => ({ "阻塞": 0, "进行中": 1, "未开始": 2 })[task.status] ?? 3;
+  return status(a) - status(b) || Number(a.id) - Number(b.id);
+}
 function daysLeftText(task) {
   if (task.status === "已完成") return "已完成";
   if (task.status === "已取消") return "已取消";

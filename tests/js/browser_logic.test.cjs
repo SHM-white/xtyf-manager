@@ -278,3 +278,59 @@ test("archived catalog entries are dictionary-only choices without destroying sa
   assert.equal(page.value("retainArchivedCatalogSelection")("", 1, items, true), "");
   assert.equal(page.value("retainArchivedCatalogSelection")("2", 1, items, true), "2");
 });
+
+test("person lanes put unfinished owned work ahead of participant work and fold finished tasks", () => {
+  const page = browser(["app.js", "task-board.js"]), state = page.value("state");
+  state.view = "person";
+  state.members = [{id:7,name:"小七",role:"member"},{id:2,name:"队友",role:"member"}];
+  state.tasks = [
+    {id:8,title:"已完成",owner_id:7,status:"已完成",days_left:-60,priority:"高"},
+    {id:5,title:"协助逾期",owner_id:2,participant_ids:[7],status:"阻塞",days_left:-3,priority:"高"},
+    {id:3,title:"主责五天",owner_id:7,status:"进行中",days_left:5,priority:"低"},
+    {id:4,title:"主责今天",owner_id:7,status:"进行中",days_left:0,priority:"中"},
+    {id:2,title:"主责明天",owner_id:7,status:"进行中",days_left:1,priority:"高"},
+    {id:6,title:"协助今天",owner_id:2,participant_ids:[7],status:"进行中",days_left:0,priority:"高"},
+    {id:9,title:"已取消",owner_id:7,status:"已取消",days_left:-99,priority:"高"},
+    {id:1,title:"主责逾期",owner_id:7,status:"阻塞",days_left:-1,priority:"低"},
+    {id:7,title:"主责无期限",owner_id:7,status:"未开始",days_left:null,priority:"高"},
+  ];
+  const originalIds = state.tasks.map((task) => task.id);
+  const lane = page.value("participantLanes")(state.tasks).find((item) => item.key === "m-7");
+  assert.deepEqual(Array.from(lane.tasks, (task) => task.id), [1,4,2,3,7,5,6,9,8]);
+  assert.deepEqual(state.tasks.map((task) => task.id), originalIds);
+  let html = page.value("renderPersonLane")(lane);
+  assert.match(html, /主责逾期/);
+  assert.doesNotMatch(html, /主责今天|协助逾期|已完成<\/h3>|已取消<\/h3>/);
+  assert.match(html, /展开其余 6 项/);
+  assert.match(html, /查看已完成\/取消 2 项/);
+  assert.match(html, /id="lane-finished-m-7" hidden/);
+  page.value("expandedPersonLanes").add("m-7");
+  html = page.value("renderPersonLane")(lane);
+  assert.match(html, /主责今天|协助逾期/);
+  assert.doesNotMatch(html, /已完成<\/h3>|已取消<\/h3>/);
+  page.value("expandedFinishedLanes").add("m-7");
+  html = page.value("renderPersonLane")(lane);
+  assert.match(html, /已完成<\/h3>/);
+  assert.match(html, /已取消<\/h3>/);
+  assert.doesNotMatch(html, /id="lane-finished-m-7" hidden/);
+  state.filters.status = "已完成";
+  const filtered = page.value("participantLanes")(page.value("filteredTasks")()).find((item) => item.key === "m-7");
+  page.value("expandedFinishedLanes").delete("m-7");
+  assert.match(page.value("renderPersonLane")(filtered), /已完成<\/h3>/);
+});
+
+test("urgency comparator prioritizes nearest deadline, then priority, without hiding unscheduled work", () => {
+  const page = browser(["app.js", "task-board.js"]);
+  const rank = page.value("compareTaskUrgency");
+  const items = [
+    {id:5,owner_id:7,days_left:null,status:"未开始",priority:"高"},
+    {id:4,owner_id:7,days_left:3,status:"进行中",priority:"高"},
+    {id:3,owner_id:7,days_left:3,status:"进行中",priority:"低"},
+    {id:2,owner_id:7,days_left:-2,status:"进行中",priority:"低"},
+    {id:1,owner_id:7,days_left:3,status:"阻塞",priority:"高"},
+  ];
+  assert.deepEqual(Array.from([...items].sort((a,b) => rank(a,b,7)), x=>x.id), [2,1,4,3,5]);
+  assert.deepEqual(items.map(x=>x.id), [5,4,3,2,1]);
+  assert.equal(rank({id:1,status:"已完成",days_left:-999,owner_id:7},
+    {id:2,status:"进行中",days_left:null,owner_id:3,participant_ids:[7]},7) > 0, true);
+});

@@ -47,7 +47,7 @@ function renderWorkspaceDashboard() {
   if (stats)
     stats.innerHTML = metrics.map(([label, value, note]) =>
       `<div class="ws-dashboard-stat"><span class="ws-label">${esc(label)}</span><strong class="ws-value">${value}</strong><span class="ws-footnote">${esc(note)}</span></div>`).join("");
-  const ranked = [...new Map([...mine, ...overdue, ...dueSoon, ...active].map((task) => [task.id, task])).values()].slice(0, 8);
+  const ranked = [...active].sort((a, b) => compareTaskUrgency(a, b, state.me.id)).slice(0, 8);
   const target = document.getElementById("dashboard-task-list");
   if (target) target.innerHTML = ranked.map(dashboardTaskRow).join("") || '<p class="empty">当前没有待处理任务</p>';
 }
