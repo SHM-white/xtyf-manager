@@ -10,7 +10,7 @@ class TestWorkflows(unittest.TestCase):
     def setUp(self):
         self.admin = app_module.app.test_client()
         result = self.admin.post('/login', json={
-            'username': 'admin', 'password': 'ci-test-password-only',
+            'username': 'admin', 'password': '123456',
         })
         self.assertTrue(result.get_json()['ok'])
 
@@ -73,7 +73,8 @@ class TestWorkflows(unittest.TestCase):
         self.assertTrue(reviewer_login.get_json()['ok'])
         approved = reviewer.post(f'/funds/api/records/{rid}/review', json={'version': created.get_json()['version']})
         self.assertEqual(approved.get_json()['code'], 0)
-        edited = self.admin.put(f'/funds/api/records/{rid}', json={'amount': 35})
+        edited = self.admin.put(f'/funds/api/records/{rid}',
+                                json={'amount': 35, 'version': approved.get_json()['version']})
         self.assertEqual(edited.get_json()['code'], 0)
         self.assertTrue(edited.get_json()['review_required'])
         conn = get_funds_db()

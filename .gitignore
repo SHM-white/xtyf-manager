@@ -27,3 +27,13 @@ backups/
 dist/
 mail.env
 data/mail-preview/
+
+# Local client builds and signing material
+.build-tools/
+clients/windows/node_modules/
+clients/android/build/
+clients/signing/
+clients/desktop/node_modules/
+clients/desktop/target/
+clients/desktop/gen/schemas/
+clients/frontend/dist/

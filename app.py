@@ -30,13 +30,14 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 # ---- 本项目的公共模块与子模块（子模块的蓝图注册见下方 app.register_blueprint）----
 from common import (BASE_DIR, DB_PATH, current_user, get_db, login_required,
-                    manager_required, now_str)
+                    manager_required, now_str, ROLE_NAMES as COMMON_ROLE_NAMES)
 from modules.funds import funds_bp, can_review
 from modules.invoices import bp as invoices_bp, migrate_invoice_owners, start_invoice_worker
 from modules.invoice_jobs import migrate as migrate_invoice_jobs
 from modules.discussions import discussions_bp
 from modules.collaboration_schema import migrate as migrate_collaboration
 from modules.task_api import bp as task_api_bp
+from modules.task_mutations import PRIORITIES as TASK_PRIORITIES, STATUSES as TASK_STATUSES
 from modules.task_attachments import bp as task_attachments_bp
 from modules.task_progress import bp as task_progress_bp
 from modules.task_catalogs import bp as task_catalogs_bp
@@ -48,17 +49,18 @@ from modules.email_api import bp as email_bp
 from modules.mail_service import configure as configure_mail
 from modules.security import init_security, migrate_security, write_initial_credentials
 from modules.workspace_settings import bp as workspace_settings_bp, migrate as migrate_workspace, theme_context
+from modules.client_api import create_client_blueprint
 
 # ---- 关键路径与端口（secret.key 用于会话签名，首次运行自动生成）----
 SECRET_PATH = os.environ.get("PROGRESS_SECRET_PATH", os.path.join(BASE_DIR, "secret.key"))
 PORT = int(os.environ.get("PORT", "8520"))
 
 # ---- 全局常量：任务状态枚举（看板/表单/校验共用）----
-STATUSES = ["未开始", "进行中", "已完成", "阻塞", "已取消"]
+STATUSES = list(TASK_STATUSES)
 # ---- 任务优先级（看板上以彩色圆点显示）----
-PRIORITIES = ["高", "中", "低"]
+PRIORITIES = list(TASK_PRIORITIES)
 # ---- 系统角色：admin=管理员 / manager=项管 / member=成员 ----
-ROLE_NAMES = {"admin": "管理员", "manager": "项管", "member": "成员"}
+ROLE_NAMES = COMMON_ROLE_NAMES.copy()
 # ---- 会话密钥：读取 secret.key，不存在则生成 64 位随机串并持久化 ----
 def _load_secret():
     """Create the session-signing key privately; never overwrite an existing key.
@@ -231,6 +233,16 @@ def init_db():
         migrate_security(db)
         migrate_invoice_owners(db)
         migrate_invoice_jobs(db)
+        # Hot read paths (dashboard tree, status filters, attachment lookups)
+        # would otherwise scan the whole table on every 5s poll.
+        db.executescript("""
+            CREATE INDEX IF NOT EXISTS idx_tasks_owner ON tasks(owner_id, id);
+            CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status, id);
+            CREATE INDEX IF NOT EXISTS idx_tasks_deleted ON tasks(deleted_at, id);
+            CREATE INDEX IF NOT EXISTS idx_task_attachments_task ON task_attachments(task_id, id);
+            CREATE INDEX IF NOT EXISTS idx_logs_task ON logs(task_id, id);
+        """)
+        db.commit()
     finally:
         db.close()
 
@@ -295,8 +307,18 @@ def login():
             return redirect(destination)
         return render_template("login.html", me=None, page="login", role_names=ROLE_NAMES)
     data = request.get_json(silent=True) or request.form
-    username = (data.get("username") or "").strip()
+    return authenticate_login(data)
+
+
+def authenticate_login(data):
+    """One credential/rate-limit/session path for the website and native apps."""
+    username = data.get("username") or ""
     password = data.get("password") or ""
+    if (not isinstance(username, str) or not isinstance(password, str)
+            or len(username) > 64 or len(password) > 1024):
+        return jsonify(ok=False, error="用户名或密码格式不正确", reason="invalid_payload"), 400
+    username = username.strip()
+    destination = task_login_destination(data.get("next", ""))
     db = get_db()
     attempt_key = _login_attempt_key(username)
     now = int(time.time())
@@ -545,6 +567,7 @@ def export_csv():
 
 
 # ---- 模块导入即初始化（幂等）：gunicorn 启动时自动完成建表与兜底账号 ----
+app.register_blueprint(create_client_blueprint(authenticate_login, STATUSES, PRIORITIES))
 init_db()
 
 # ---- 本地调试入口（线上由 systemd 调用 gunicorn，不会走到这里）----

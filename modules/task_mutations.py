@@ -11,7 +11,7 @@ from modules.task_validation import active_ids, creates_combined_task_cycle, nor
 
 STATUSES = ("未开始", "进行中", "已完成", "阻塞", "已取消")
 PRIORITIES = ("高", "中", "低")
-SCALAR_FIELDS = ("title", "detail", "owner_id", "project_id", "parent_id", "priority", "status", "start_date", "due_date", "start_date_origin", "completed_at")
+SCALAR_FIELDS = ("title", "detail", "owner_id", "project_id", "parent_id", "priority", "status", "start_date", "due_date", "start_date_origin", "completed_at", "schedule_locked")
 REVISION_FIELDS = SCALAR_FIELDS + ("schedule_stage",)
 RELATION_FIELDS = ("participant_ids", "group_ids", "predecessor_ids")
 
@@ -128,6 +128,8 @@ def create_task(
     db: sqlite3.Connection, actor: Actor, data: JsonObject
 ) -> tuple[int | None, int | None, str | None, int]:
     db.execute("BEGIN IMMEDIATE")
+    if "schedule_locked" in data and type(data["schedule_locked"]) is not bool:
+        db.rollback(); return None, None, "自动排期固定日期必须为布尔值", 400
     owner_id = parse_id(data.get("owner_id"), "owner_id")
     project_id = parse_id(data.get("project_id"), "project_id")
     if "project" in data:
@@ -139,7 +141,8 @@ def create_task(
               "owner_id": owner_id, "project_id": project_id,
               "parent_id": parse_id(data.get("parent_id"), "parent_id"),
               "priority": data.get("priority", "中"), "status": data.get("status", "未开始"),
-              "start_date": str(data.get("start_date") or "").strip(), "due_date": str(data.get("due_date") or "").strip()}
+              "start_date": str(data.get("start_date") or "").strip(), "due_date": str(data.get("due_date") or "").strip(),
+              "schedule_locked": data.get("schedule_locked", False)}
     relations, error = _resolve_relations(db, data, str(actor["role"]), owner_id)
     error = error or apply_start_date_request(db, data, values)
     member_ids = relations.get("participant_ids", []) + ([owner_id] if owner_id is not None else [])
@@ -178,6 +181,8 @@ def update_task(
     management = actor["role"] in ("admin", "manager")
     if not management and actor["id"] != prior["owner_id"] and actor["id"] not in participant_ids:
         db.rollback(); return None, "无权限", 403
+    if "schedule_locked" in data and type(data["schedule_locked"]) is not bool:
+        db.rollback(); return None, "自动排期固定日期必须为布尔值", 400
     expected = parse_id(data.get("version", prior["version"]), "version", False)
     values = {key: prior[key] for key in SCALAR_FIELDS}
     touched: set[str] = set()
@@ -214,6 +219,19 @@ def update_task(
             relations[key] = supplied_relations[key]
             touched.add(key)
     old_relations = _relations(db, task_id)
+    if not management:
+        # 归属类字段只允许管理员/项管调整；负责人和参与者仍可更新状态与内容。
+        ownership = []
+        if values["owner_id"] != prior["owner_id"]:
+            ownership.append("负责人")
+        if values["project_id"] != prior["project_id"]:
+            ownership.append("造车组别")
+        for key, label in (("participant_ids", "参与成员"), ("group_ids", "专业组")):
+            if sorted(relations[key]) != sorted(old_relations[key]):
+                ownership.append(label)
+        if ownership:
+            db.rollback()
+            return None, "只有管理员或项管可以调整" + "、".join(ownership), 403
     active_members = [item for item in relations["participant_ids"] if item not in old_relations["participant_ids"]]
     if values["owner_id"] != prior["owner_id"] and values["owner_id"] is not None:
         active_members.append(values["owner_id"])

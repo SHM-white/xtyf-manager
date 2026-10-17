@@ -20,7 +20,7 @@ class TestSecurityAndStability(unittest.TestCase):
     def setUp(self):
         self.admin = app_module.app.test_client()
         reply = self.admin.post("/login", json={
-            "username": "admin", "password": "ci-test-password-only",
+            "username": "admin", "password": "123456",
         })
         self.assertTrue(reply.get_json()["ok"], reply.get_json())
 
@@ -110,7 +110,8 @@ class TestSecurityAndStability(unittest.TestCase):
         for patch_data in ({"notes": None}, {"source_dest": ["invalid"]},
                            {"invoice_count": 3.7}, {"invoice_count": -1}):
             with self.subTest(patch=patch_data):
-                result = self.admin.put(f"/funds/api/records/{rid}", json=patch_data)
+                result = self.admin.put(f"/funds/api/records/{rid}",
+                                        json={"version": created["version"], **patch_data})
                 self.assertEqual(result.status_code, 400, result.get_json())
         conn = funds.get_funds_db()
         row = conn.execute("SELECT amount_cents,invoice_count,notes FROM records WHERE id=?",

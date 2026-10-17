@@ -2,8 +2,9 @@
 import unittest
 from uuid import uuid4
 
-from common import get_db
+# 先导入测试夹具（设置临时库/目录），再导入项目模块。
 from test_tasks import app_module
+from common import get_db
 
 
 class TaskAssignmentRoles(unittest.TestCase):
@@ -11,7 +12,7 @@ class TaskAssignmentRoles(unittest.TestCase):
     def setUpClass(cls):
         cls.app = app_module.app
         cls.admin = cls.app.test_client()
-        cls.admin.post('/login', json={'username': 'admin', 'password': 'ci-test-password-only'})
+        cls.admin.post('/login', json={'username': 'admin', 'password': '123456'})
         cls.admin_id = cls.admin.get('/api/account/profile').get_json()['profile']['id']
         cls.member_ids = []
         for role in ('member', 'manager'):
