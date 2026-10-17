@@ -90,11 +90,11 @@ function isFinishedTask(task) {
   return task.status === "已完成" || task.status === "已取消";
 }
 // Capped urgency scores: ownership 28, deadline 44, priority 20, state 8 (max 100).
-function taskResponsibilityWeight(task, memberId = null) {
+function taskResponsibilityWeight(task, memberId = null, teamTaskWeight = 0) {
   const id = Number(memberId);
   if (memberId == null || !Number.isSafeInteger(id) || id <= 0) return 0;
   if (Number(task.owner_id) === id) return 28;
-  return taskParticipants(task).includes(id) ? 8 : 0;
+  return taskParticipants(task).includes(id) ? 8 : teamTaskWeight;
 }
 function taskDeadlineWeight(daysLeft) {
   if (!Number.isSafeInteger(daysLeft)) return 0;
@@ -106,20 +106,22 @@ function taskDeadlineWeight(daysLeft) {
   if (daysLeft <= 30) return Math.max(0, 5 - Math.floor((daysLeft - 15) / 3));
   return 0;
 }
-function taskUrgencyScore(task, memberId = null) {
+function taskUrgencyScore(task, memberId = null, teamTaskWeight = 0) {
   if (isFinishedTask(task)) return 0;
   const priority = { "高": 20, "中": 10, "低": 0 }[task.priority] ?? 0;
   const workState = { "阻塞": 8, "进行中": 4, "未开始": 0 }[task.status] ?? 0;
-  return taskResponsibilityWeight(task, memberId) +
+  return taskResponsibilityWeight(task, memberId, teamTaskWeight) +
     taskDeadlineWeight(task.days_left) + priority + workState;
 }
-function compareTaskUrgency(a, b, memberId = null) {
+function compareTaskUrgency(a, b, memberId = null, teamTaskWeight = 0) {
   const closedDiff = Number(isFinishedTask(a)) - Number(isFinishedTask(b));
   if (closedDiff) return closedDiff;
-  const scoreDiff = taskUrgencyScore(b, memberId) - taskUrgencyScore(a, memberId);
+  const scoreDiff = taskUrgencyScore(b, memberId, teamTaskWeight) -
+    taskUrgencyScore(a, memberId, teamTaskWeight);
   if (scoreDiff) return scoreDiff;
   // Stable tie-breaking never restores unlimited bias for severely overdue tasks.
-  const roleDiff = taskResponsibilityWeight(b, memberId) - taskResponsibilityWeight(a, memberId);
+  const roleDiff = taskResponsibilityWeight(b, memberId, teamTaskWeight) -
+    taskResponsibilityWeight(a, memberId, teamTaskWeight);
   if (roleDiff) return roleDiff;
   const priority = (task) => ({ "高": 20, "中": 10, "低": 0 })[task.priority] ?? 0;
   const priorityDiff = priority(b) - priority(a);

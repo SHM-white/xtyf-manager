@@ -164,6 +164,38 @@ async function ready(page) { await page.locator('#task-create-panel[open][aria-b
       if(width>=1280){const recent=await page.locator('[aria-label="近期任务"]').boundingBox(),daily=await page.locator('.ws-dashboard-daily').boundingBox(),tip=await page.locator('.ws-dashboard-aside > section').filter({hasText:'工作提示'}).boundingBox();assert.ok(daily.x>recent.x);assert.ok(daily.y>=tip.y+tip.height);}
     }
     checks.push('dashboard daily block below work hints on right at 1280/1606; no overflow at seven widths');
+
+    // The homepage must sort team-wide work (not just "my tasks" first), using the
+    // same deadline/status/priority weights but a +4 team responsibility baseline.
+    const homeRanking = await page.evaluate(() => {
+      const self = Number(state.me.id);
+      state.tasks = [
+        {id:8101,title:'我的无期限主责',owner_id:self,priority:'高',status:'阻塞',days_left:null},
+        {id:8102,title:'我参与明天截止',owner_id:98765,participant_ids:[self],priority:'高',status:'阻塞',days_left:1},
+        {id:8103,title:'团队明天截止',owner_id:98765,priority:'高',status:'阻塞',days_left:1},
+        {id:8104,title:'团队今天截止',owner_id:98765,priority:'高',status:'阻塞',days_left:0},
+        {id:8105,title:'我参与今天截止',owner_id:98765,participant_ids:[self],priority:'高',status:'阻塞',days_left:0},
+        {id:8106,title:'我主责今天截止',owner_id:self,priority:'低',status:'进行中',days_left:0},
+        {id:8107,title:'团队逾期高优先',owner_id:98765,priority:'高',status:'阻塞',days_left:-6},
+        {id:8108,title:'已完成旧任务',owner_id:self,priority:'高',status:'已完成',days_left:-900},
+      ];
+      renderWorkspaceDashboard();
+      return {
+        ids: Array.from(document.querySelectorAll('#dashboard-task-list [data-dashboard-task]'),
+          row => Number(row.dataset.dashboardTask)),
+        summary: document.querySelector('#dashboard-task-list [data-dashboard-task="8107"] .ws-task-row-sub')?.textContent,
+        teamScore: taskUrgencyScore(state.tasks[2],self,DASHBOARD_TEAM_TASK_WEIGHT),
+        participantScore: taskUrgencyScore(state.tasks[1],self,DASHBOARD_TEAM_TASK_WEIGHT),
+        ownScore: taskUrgencyScore(state.tasks[0],self,DASHBOARD_TEAM_TASK_WEIGHT),
+      };
+    });
+    assert.deepEqual(homeRanking.ids,[8107,8105,8106,8102,8104,8103,8101]);
+    assert.match(homeRanking.summary,/团队任务/);
+    assert.equal(homeRanking.teamScore,64);
+    assert.equal(homeRanking.participantScore,68);
+    assert.equal(homeRanking.ownScore,56);
+    checks.push('homepage ranks team tasks +4 vs participant +8, owner +28; excludes completed work');
+
     if(process.env.REVIEW_WEBKIT_PATH) {
       phoneBrowser=await webkit.launch({headless:true,executablePath:process.env.REVIEW_WEBKIT_PATH});
       const context=await phoneBrowser.newContext({...devices['iPhone 13']});await context.addCookies(await page.context().cookies());const phone=await context.newPage();phone.on('pageerror',error=>errors.push(error.message));
