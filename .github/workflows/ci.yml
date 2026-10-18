@@ -128,3 +128,40 @@ jobs:
           path: .venv/*-check/
           if-no-files-found: ignore
 
+  client_contracts:
+    name: Client contracts (no installers)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install Python dependencies
+        run: python -m pip install -r requirements-dev.txt
+      - name: Syntax checks for client sources
+        shell: bash
+        run: |
+          python -m compileall -q clients
+          for file in clients/frontend/*.js clients/windows/*.cjs; do
+            node --check "$file"
+          done
+      - name: Test client release atomicity and rollback
+        run: python -m unittest discover -s clients -p 'test_release.py' -v
+      - name: Test locally compiled frontend and vendor asset integrity
+        run: python -m unittest discover -s clients/frontend -p 'test_frontend.py' -v
+      - name: Test Android native HTTP transport without an APK
+        run: python clients/android/test_transport.py
+      - name: Test legacy Electron URL policy until its source is retired
+        run: node --test clients/windows/client.test.cjs
