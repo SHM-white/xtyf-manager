@@ -14,7 +14,7 @@ from modules.task_migrations import migrate
 class TaskStateAndBlockerTests(unittest.TestCase):
     def setUp(self):
         self.admin = app_module.app.test_client()
-        self.admin.post('/login', json={'username': 'admin', 'password': '123456'})
+        self.admin.post('/login', json={'username': 'admin', 'password': 'ci-test-password-only'})
 
     def create(self, **fields):
         response = self.admin.post('/api/task', json={'title': uuid4().hex, **fields})
