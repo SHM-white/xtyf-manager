@@ -88,3 +88,119 @@ jobs:
       - run: python clients/android/test_transport.py --jdk "$JAVA_HOME"
       - name: Compile Android sources and run update tests without producing an APK
         run: python clients/android/test_ui_updates.py --jdk "$JAVA_HOME" --json-jar .build-tools/json.jar --android-jar "$ANDROID_HOME/platforms/android-36/android.jar" --fixture .build-tools/client-update-fixture
+
+  # These jobs produce installable CI *test* builds, not a formal signed release.
+  # No repository secrets are injected into PRs; Android gets a new temporary
+  # keystore on each run and cannot upgrade a release-signed installation.
+  package-windows:
+    name: Package Windows x64 (NSIS)
+    needs: [frontend, desktop]
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install pinned Rust toolchain
+        shell: pwsh
+        run: rustup toolchain install 1.99.1 --profile minimal
+      - name: Build pinned frontend assets
+        run: |
+          python -m pip install jinja2
+          python clients/build_frontend.py
+      - name: Build and verify actual Windows installer
+        shell: pwsh
+        env:
+          XTYF_USE_SYSTEM_RUST: '1'
+        run: |
+          ./clients/build_windows.ps1 -InstallDependencies -OutputDirectory dist/clients/windows
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $out = 'dist/clients/windows'
+          $installer = @(Get-ChildItem $out -Filter 'XTYF-Manager-Setup-*-x64.exe')
+          if ($installer.Count -ne 1) { throw 'Expected exactly one Windows installer' }
+          $hash = (Get-FileHash $installer[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $($installer[0].Name)" | Set-Content "$out/SHA256SUMS.txt" -Encoding ascii
+      - name: Upload Windows CI installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: xtyf-client-windows-x64
+          path: |
+            dist/clients/windows/XTYF-Manager-Setup-*-x64.exe
+            dist/clients/windows/windows-verification.json
+            dist/clients/windows/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14
+
+  package-android:
+    name: Package Android (APK)
+    needs: android
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install Android platform and build tools
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-36' 'build-tools;36.0.0'
+          python -m pip install jinja2
+          python clients/build_frontend.py
+      - name: Build and verify APK with ephemeral CI-only signing key
+        run: |
+          python clients/build_android.py --jdk "$JAVA_HOME" --sdk "$ANDROID_HOME" --skip-frontend-build --output-dir dist/clients/android
+          cd dist/clients/android
+          test "$(find . -maxdepth 1 -type f -name 'XTYF-Manager-*.apk' | wc -l)" -eq 1
+          sha256sum XTYF-Manager-*.apk > SHA256SUMS.txt
+      - name: Upload Android CI installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: xtyf-client-android-test-signed
+          path: |
+            dist/clients/android/XTYF-Manager-*.apk
+            dist/clients/android/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14
+
+  package-linux:
+    name: Package Ubuntu ARM64 and Fedora x64
+    needs: [frontend, desktop]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Build pinned frontend assets
+        run: |
+          python -m pip install jinja2
+          python clients/build_frontend.py
+      - name: Prepare native and ARM64 cross-compilation dependencies
+        run: python clients/build_linux.py --setup
+      - name: Build and verify actual DEB and RPM
+        run: |
+          python clients/build_linux.py --output-dir dist/clients/linux
+          cd dist/clients/linux
+          test "$(find . -maxdepth 1 -type f -name 'XTYF-Manager-*-arm64.deb' | wc -l)" -eq 1
+          test "$(find . -maxdepth 1 -type f -name 'XTYF-Manager-*-x86_64.rpm' | wc -l)" -eq 1
+          sha256sum XTYF-Manager-*-arm64.deb XTYF-Manager-*-x86_64.rpm > SHA256SUMS.txt
+      - name: Upload Linux CI installers and verification report
+        uses: actions/upload-artifact@v4
+        with:
+          name: xtyf-client-linux
+          path: |
+            dist/clients/linux/*.deb
+            dist/clients/linux/*.rpm
+            dist/clients/linux/linux-verification.json
+            dist/clients/linux/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14

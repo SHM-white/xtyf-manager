@@ -129,6 +129,17 @@ python clients/build_linux.py --output-dir .build-tools/linux-debug
 
 请独立备份整个 `clients/signing/`，后续覆盖安装需要原密钥和密码文件。密钥、用户数据、数据库、附件和邮件配置不进入客户端安装包。
 
+
+## GitHub Actions 测试安装包（仅供 PR 验收）
+
+现有 [Client validation](../.github/workflows/clients.yml) 在原有前端／Rust／Java 验证通过后，会在独立的 Windows、Ubuntu 22.04 和 Android SDK runner 构建实际客户端。打开 GitHub Actions → **Client validation** → 对应 PR 的运行 → **Artifacts**，获取以下产物：
+
+- `xtyf-client-windows-x64`：Windows x64 NSIS `.exe`、`windows-verification.json` 与 SHA-256。
+- `xtyf-client-android-test-signed`：Android `.apk` 与 SHA-256。
+- `xtyf-client-linux`：Ubuntu 22.04 ARM64 `.deb`、Fedora x86_64 `.rpm`、`linux-verification.json` 与 SHA-256。
+
+产物保留 14 天。CI 只使用 `clients/config.json` 的当前版本，不调用会递增版本的 `clients/release.py`，不创建 Release、不部署服务器、不上传任何密钥。Windows 未进行代码签名；Android 每次运行临时生成不同的测试签名密钥，**不能覆盖安装正式签名 APK，也不保证两次 CI 生成的 APK 可以相互覆盖升级**。这些测试安装包不属于正式交付，不应分发给生产用户。Linux 构建进行实际包结构、ELF 架构与依赖校验，但不能替代 Ubuntu ARM64 和 Fedora 的真机运行验收。
+
 ## 验证边界
 
 - 页面更新协议可用 `python -m unittest discover -s tests -p "test_client_u*.py"` 验证。跨语言测试先运行 `python tests/client_update_fixture.py .build-tools/client-update-fixture`，该命令仅使用临时签名密钥生成公共测试资源，不发布或生成安装包。

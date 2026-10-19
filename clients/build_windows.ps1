@@ -2,13 +2,17 @@ param([switch]$InstallDependencies, [switch]$Check, [string]$OutputDirectory)
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot -Parent
 $desktop = Join-Path $PSScriptRoot 'desktop'
-$env:CARGO_HOME = Join-Path $projectRoot '.build-tools\cargo'
-$env:RUSTUP_HOME = Join-Path $projectRoot '.build-tools\rustup'
+# The local default stays isolated; hosted CI runners already provide rustup
+# and use their own temporary home, so avoid shadowing those installed shims.
+if ($env:XTYF_USE_SYSTEM_RUST -ne '1') {
+    $env:CARGO_HOME = Join-Path $projectRoot '.build-tools\cargo'
+    $env:RUSTUP_HOME = Join-Path $projectRoot '.build-tools\rustup'
+    $env:PATH = "$env:CARGO_HOME\bin;$env:PATH"
+}
 $env:CARGO_TARGET_DIR = Join-Path $projectRoot '.build-tools\tauri-target-windows'
-$env:PATH = "$env:CARGO_HOME\bin;$env:PATH"
 $env:npm_config_cache = Join-Path $projectRoot '.build-tools\npm-cache'
 $env:CARGO_HTTP_MULTIPLEXING = 'true'
-if (-not (Test-Path "$env:CARGO_HOME\bin\cargo.exe")) { throw 'Rust is missing. Install the pinned toolchain in .build-tools/cargo and .build-tools/rustup.' }
+if (-not (Get-Command cargo.exe -ErrorAction SilentlyContinue)) { throw 'Rust is missing. Install the pinned Rust 1.99.1 toolchain.' }
 & cargo.exe --version
 if ($LASTEXITCODE -ne 0) { throw 'Rust toolchain is not ready' }
 if ($Check) {
