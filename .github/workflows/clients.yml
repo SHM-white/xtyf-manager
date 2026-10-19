@@ -27,6 +27,22 @@ jobs:
       - run: python -m unittest discover -s clients/frontend -p test_frontend.py -v
       - run: node --test clients/frontend/test_bridge.cjs
       - run: python -m unittest discover -s clients -p 'test_*.py' -v
+      - name: Install packaged-UI browser validation dependencies
+        run: |
+          python -m pip install playwright==1.56.1
+          python -m playwright install --with-deps chromium
+      - run: python clients/build_frontend.py
+      - name: Exercise packaged pages and PDF preview with isolated native IPC
+        run: python clients/frontend/test_browser.py
+      - name: Upload packaged-UI diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-ui-browser-diagnostics
+          path: |
+            .build-tools/client-ui-tests/*.png
+            .build-tools/client-ui-tests/*.json
+          include-hidden-files: true
   desktop:
     strategy:
       fail-fast: false
