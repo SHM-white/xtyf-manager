@@ -91,7 +91,7 @@ python clients/release.py --version 1.0.11 --rebuild-current
 
 ## 本地构建环境
 
-Python 3.9+（前端构建需要 Jinja2）、Node.js/npm、Visual Studio C++ Build Tools、Rust 1.99.1，以及既有 JDK 17+ / Android platform 36 / build-tools 36。Python 业务回归使用项目 `.venv`。
+Python 3.9+（前端构建需要 Jinja2；首次还原第三方资源需访问 npm registry）、Node.js/npm、Visual Studio C++ Build Tools、Rust 1.99.1，以及既有 JDK 17+ / Android platform 36 / build-tools 36。Python 业务回归使用项目 `.venv`。
 
 Windows Rust 安装在项目 `.build-tools/cargo` 与 `.build-tools/rustup`，构建输出位于 `.build-tools/tauri-target-windows`。Tauri CLI 由 `clients/desktop/package-lock.json` 锁定，Rust 依赖由 Cargo.lock 锁定。
 
@@ -106,7 +106,7 @@ $env:RUSTUP_HOME = Join-Path $PWD '.build-tools/rustup'
 npm.cmd ci --prefix clients/desktop --no-audit --no-fund
 python clients/verify_windows.py --setup
 
-# 准备本地前端（供应商资源已固定版本并记录校验值）
+# 准备本地前端（供应商资源固定版本及哈希；首次从锁定 npm 源下载，后续走本地缓存）
 python clients/build_frontend.py
 
 # Linux 首次准备：Ubuntu 22.04 WSL 中安装主机开发库和独立 ARM64 sysroot

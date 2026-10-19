@@ -36,4 +36,6 @@ clients/desktop/target/
 clients/desktop/gen/schemas/
 clients/android/build/
 clients/frontend/dist/
+# Restored on demand from npm tarballs pinned in vendor-lock.json.
+clients/frontend/vendor/
 client-ui-release/

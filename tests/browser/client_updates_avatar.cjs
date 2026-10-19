@@ -58,10 +58,12 @@ async function main() {
   for(const [label,engine,options] of [['chromium',chromium,{viewport:{width:1280,height:900}}],['webkit',webkit,devices['iPhone 13']]]) {
     activeEngine=label;activePhase='browser startup';
     browser=await engine.launch({headless:true});
-    const context=await browser.newContext(options),page=await context.newPage();activePage=page;
+    const context=await browser.newContext(options);
+    let page=await context.newPage();activePage=page;
     const state={current:'A',pending:'B',calls:[],failAvatar:false,offline:false,incompatible:false,capable:true,applies:0};activeState=state;
-    page.on('pageerror',error=>errors.push(label+': '+error.message));
-    await page.exposeFunction('__testNative',async(action,args)=>{
+    const watchPage=current=>current.on('pageerror',error=>errors.push(label+': '+error.message));
+    watchPage(page);
+    await context.exposeFunction('__testNative',async(action,args)=>{
       state.calls.push({action,args});
       const update=()=>({status:state.pending?'pending':'current',currentVersion:state.current,pendingVersion:state.pending,message:state.pending?'新页面已下载，将在下次启动生效。':'当前页面已是最新版本。',installer:{version:'1.0.11',url:'/api/client/installers/test',sha256:'a'.repeat(64)}});
       if(action==='get_config')return {serverUrl:base,version:'1.0.10',bridgeVersion:2,capabilities:state.capable?['ui_updates','image_preview']:['ui_updates'],platform:label==='webkit'?'android':'windows-x86_64'};
@@ -79,10 +81,19 @@ async function main() {
       }
       throw Error('Unexpected native action '+action);
     });
-    await page.addInitScript(()=>{
+    await context.addInitScript(()=>{
       Object.defineProperty(window,'__XTYF_VIEW_TOKEN__',{value:'fixture-view-token',writable:false,configurable:false});
       window.XTYFNative={invoke:(action,args)=>window.__testNative(action,args)};
     });
+    // The native A/B UI update starts with a new WebView, not a reload of an
+    // existing WebKit document holding canvas/image decoders and detached frames.
+    // Recreate just the document; retain the context, IPC and authenticated backend.
+    const restartDocument=async()=>{
+      const url=page.url();
+      await page.close();
+      page=await context.newPage();activePage=page;watchPage(page);
+      await page.goto(url);
+    };
     const account=()=>page.frameLocator('#page-host iframe');
     const loaded=async count=>{
       await page.waitForFunction(count=>{const doc=document.querySelector('#page-host iframe').contentDocument,images=[...doc.querySelectorAll('[data-avatar-image]')];return images.length===count&&images.every(img=>img.naturalWidth===512&&!img.hidden&&img.parentElement.querySelector('[data-avatar-initial]').hidden);},count);
@@ -124,19 +135,19 @@ async function main() {
     await page.locator('#client-settings-open').click();page.once('dialog',dialog=>dialog.accept());await page.locator('#updates-apply').click();
     await page.waitForFunction(()=>!document.getElementById('updates-apply').disabled);
     assert.equal(state.applies,1);assert.equal(state.current,'B');
-    await page.reload();await account().locator('#avatar-change').waitFor({state:'visible'});await loaded(3);
+    await restartDocument();await account().locator('#avatar-change').waitFor({state:'visible'});await loaded(3);
     for(const route of ['/invoices/','/funds/']){await page.evaluate(route=>XTYF.navigate(route),route);await account().locator('h1').first().waitFor();await loaded(2);}
     await page.evaluate(()=>XTYF.navigate('/account'));await account().locator('#avatar-remove').waitFor({state:'visible'});
     await account().locator('#avatar-remove').click();await account().locator('#avatar-result').filter({hasText:'已恢复'}).waitFor();
     assert.equal(await account().locator('[data-avatar-image]').count(),0);assert.equal(await page.evaluate(()=>XTYF.bootstrap.me.avatar_url),null);
     await page.screenshot({path:path.join(output,label+'-account.png'),fullPage:true});
-    activePhase='capability reload';state.capable=false;await page.reload();await account().locator('h1').waitFor();await page.waitForFunction(()=>XTYF.compatible);
+    activePhase='capability reload';state.capable=false;await restartDocument();await account().locator('h1').waitFor();await page.waitForFunction(()=>XTYF.compatible);
     assert.equal(await account().locator('#avatar-editor').isVisible(),false);
-    activePhase='incompatible bootstrap reload';state.incompatible=true;await page.reload();await page.getByRole('heading',{name:'服务器需要更新'}).waitFor();
+    activePhase='incompatible bootstrap reload';state.incompatible=true;await restartDocument();await page.getByRole('heading',{name:'服务器需要更新'}).waitFor();
     assert.match(await page.evaluate(()=>XTYF.request('/api/tasks').then(()=>'',error=>error.message)),/协议不兼容/);
     await page.locator('#client-settings-open').click();await page.locator('#updates-check').waitFor({state:'visible'});await page.locator('#settings-cancel').click();
     activePhase='offline reload';state.incompatible=false;state.offline=true;const before=state.calls.filter(call=>call.action==='ui_ready').length;
-    await page.reload();await account().locator('#login-form').waitFor();await page.locator('#connection-status').waitFor({state:'visible'});
+    await restartDocument();await account().locator('#login-form').waitFor();await page.locator('#connection-status').waitFor({state:'visible'});
     assert.ok(state.calls.filter(call=>call.action==='ui_ready').length>before,'local render marks ready even offline');
     await page.locator('#client-settings-open').click();await page.locator('#server-url').waitFor({state:'visible'});
     passed.push({engine:label,version:browser.version(),checks:['pending without runtime reload','installer save with signed SHA256','reload confirmation preserves drafts','emulated A/B restart','native generic MIME identified from bytes','native handle crop and failed retry','three avatars and refresh','invoices/funds','restore default','capability gate','incompatible business gate','offline ui_ready/settings']});
