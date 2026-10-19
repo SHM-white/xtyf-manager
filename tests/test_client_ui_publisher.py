@@ -2,6 +2,8 @@
 from pathlib import Path
 from contextlib import nullcontext
 import io
+import shlex
+import shutil
 import subprocess
 import tarfile
 import tempfile
@@ -13,6 +15,32 @@ from deploy import package_release
 
 
 class TestClientUIPublisher(unittest.TestCase):
+    @unittest.skipUnless(shutil.which('rsync'), 'requires rsync on the deployment platform')
+    def test_deploy_sync_excludes_client_signing_material_and_preserves_runtime(self):
+        script = (package_release.ROOT / 'deploy/deploy.sh').read_text(encoding='utf-8')
+        arguments = shlex.split(script.split('sudo rsync', 1)[1].split('\nsudo chmod', 1)[0].replace('\\\n', ''))
+        self.assertEqual(arguments[-2:], ['$SRC_DIR/', '$APP_DIR/'])
+        with tempfile.TemporaryDirectory() as temporary:
+            source, target = Path(temporary) / 'source', Path(temporary) / 'target'
+            source.mkdir(); target.mkdir()
+            excluded = ['clients/signing/ui-update-private.pem', 'clients/signing/android-password.txt',
+                        'clients/signing/xtyf-manager.jks', '.build-tools/tool', '.git/config',
+                        '.venv/tool', 'clients/desktop/node_modules/tool',
+                        'clients/desktop/target/tool', 'clients/android/build/tool', 'dist/setup.exe']
+            included = ['app.py', 'clients/update-public-key.pem', 'client-ui-release/update.json']
+            for name in excluded + included:
+                path = source / name; path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text('synthetic source', encoding='utf-8')
+            (target / 'data.db').write_bytes(b'existing business data')
+            (target / 'secret.key').write_bytes(b'existing session key')
+            subprocess.run(['rsync', *arguments[:-2], str(source) + '/', str(target) + '/'], check=True)
+            for name in excluded:
+                self.assertFalse((target / name).exists(), name)
+            for name in included:
+                self.assertEqual((target / name).read_text(), 'synthetic source')
+            self.assertEqual((target / 'data.db').read_bytes(), b'existing business data')
+            self.assertEqual((target / 'secret.key').read_bytes(), b'existing session key')
+
     def test_head_archive_preserves_locked_bytes_with_windows_autocrlf(self):
         with tempfile.TemporaryDirectory() as temporary:
             source = Path(temporary)
