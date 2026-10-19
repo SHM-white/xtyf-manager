@@ -28,7 +28,7 @@ async function login(page, base, password, firstLogin = false) {
 }
 async function selectProject(page, base, project) {
   await page.goto(base + "/manage");
-  await page.locator("#t-filter-project option[value='" + project + "']").waitFor();
+  await page.locator("#t-filter-project option[value='" + project + "']").waitFor({state: "attached"});
   await page.locator("#t-filter-project").selectOption(String(project));
   await page.locator("#schedule-project:enabled").waitFor();
 }
