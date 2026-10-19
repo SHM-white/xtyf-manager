@@ -2,7 +2,7 @@ name: CI
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, "split/pr31-04-account-ui", "split/pr31-05-client-final"]
 
 permissions:
   contents: read
@@ -111,7 +111,7 @@ jobs:
         run: |
           set -euo pipefail
           failures=0
-          for suite in review_fixes pr22_merge task_center task_schedule daily_mail action_failures login_mobile palette_workspace local_collaboration; do
+          for suite in review_fixes pr22_merge task_center task_schedule daily_mail action_failures login_mobile palette_workspace local_collaboration account_avatar account_invoice_ui; do
             echo "::group::Browser test: ${suite}"
             if ! node "tests/browser/${suite}.cjs"; then
               echo "::error::Browser suite ${suite} failed"
@@ -125,6 +125,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: browser-e2e-diagnostics
-          path: .venv/*-check/
+          path: |
+            .venv/*-check/
+            .build-tools/*-check/
           if-no-files-found: ignore
 
