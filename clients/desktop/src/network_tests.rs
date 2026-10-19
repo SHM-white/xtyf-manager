@@ -100,6 +100,12 @@ fn cookies_csrf_rotation_persistence_and_header_boundary() {
         let restarted = state(&server.origin, &scratch.0);
         let echoed = response_json(&call(&restarted, request).await);
         assert_eq!(echoed["headers"]["cookie"], "session=synthetic-login"); assert_eq!(echoed["headers"]["x-csrf-token"], "token-after-restart");
+        let session = restarted.session(&server.origin).unwrap();
+        let _: CookieStore = serde_json::from_slice(&fs::read(&session.path).unwrap()).unwrap();
+        #[cfg(unix)] {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(fs::metadata(&session.path).unwrap().permissions().mode() & 0o777, 0o600);
+        }
     });
 }
 

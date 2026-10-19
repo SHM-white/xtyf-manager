@@ -66,7 +66,7 @@ jobs:
         run: |
           mkdir -p .build-tools
           curl --fail --location --retry 3 https://repo.maven.apache.org/maven2/org/json/json/20240303/json-20240303.jar -o .build-tools/json.jar
-          sdkmanager 'platforms;android-36'
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-36'
           test -f "$ANDROID_HOME/platforms/android-36/android.jar"
           python tests/client_update_fixture.py .build-tools/client-update-fixture
       - run: python clients/android/test_transport.py --jdk "$JAVA_HOME"

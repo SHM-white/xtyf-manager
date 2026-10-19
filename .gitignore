@@ -27,3 +27,13 @@ backups/
 dist/
 mail.env
 data/mail-preview/
+
+# Client signing secrets and generated build resources belong to this stage.
+.build-tools/
+clients/signing/
+clients/desktop/node_modules/
+clients/desktop/target/
+clients/desktop/gen/schemas/
+clients/android/build/
+clients/frontend/dist/
+client-ui-release/
