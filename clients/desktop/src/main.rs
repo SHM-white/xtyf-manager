@@ -169,7 +169,9 @@ async fn response_value(response: reqwest::Response, binary: bool) -> Result<Val
     let status = response.status().as_u16();
     let headers: HashMap<String, String> = response.headers().iter().filter(|(k,_)| *k != header::SET_COOKIE)
         .filter_map(|(k,v)| v.to_str().ok().map(|v|(k.to_string(),v.to_string()))).collect();
-    let bytes = response.bytes().await.map_err(|e| e.to_string())?;
+    // Covers the server's 100 MiB attachment limit without unbounded IPC bodies.
+    // Error responses still reach the UI with their original status and body.
+    let bytes = updates::bounded_body(response, 128 * 1024 * 1024).await?;
     Ok(json!({"status":status,"headers":headers,"body":if binary {STANDARD.encode(&bytes)} else {String::from_utf8_lossy(&bytes).into_owned()},"encoding":if binary {"base64"} else {"text"}}))
 }
 async fn pick_files(state: &AppState, args: &Value) -> Result<Value, String> {

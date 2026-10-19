@@ -77,6 +77,21 @@ fn echo(request: Incoming) -> Outgoing {
 fn response_json(value: &Value) -> Value { serde_json::from_str(value["body"].as_str().unwrap()).unwrap() }
 
 #[test]
+fn bounded_api_bodies_preserve_errors_and_reject_oversized_responses() {
+    let server = LocalServer::start(|_| Outgoing::text(403, "rejected"));
+    let client = Client::new();
+    tauri::async_runtime::block_on(async {
+        let response = client.get(&server.origin).send().await.unwrap();
+        assert_eq!(updates::bounded_body(response, 8).await.unwrap(), b"rejected");
+        let response = client.get(&server.origin).send().await.unwrap();
+        assert!(updates::bounded_body(response, 7).await.is_err());
+        // The update channel continues rejecting non-successful HTTP statuses.
+        let response = client.get(&server.origin).send().await.unwrap();
+        assert!(updates::bounded_response(response, 8).await.is_err());
+    });
+}
+
+#[test]
 fn cookies_csrf_rotation_persistence_and_header_boundary() {
     let server = LocalServer::start(|request| match request.path.as_str() {
         "/bootstrap" => Outgoing::text(200, "boot").with("Set-Cookie", "session=synthetic-login; Path=/; Max-Age=3600; HttpOnly").with("X-CSRF-Token", "token-1"),

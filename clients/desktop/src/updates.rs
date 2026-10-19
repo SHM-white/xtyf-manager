@@ -124,6 +124,9 @@ pub fn platform() -> &'static str {
 }
 pub async fn bounded_response(response: reqwest::Response, limit: u64) -> Result<Vec<u8>, String> {
     if !response.status().is_success() { return Err(format!("更新请求失败（{}）", response.status())); }
+    bounded_body(response, limit).await
+}
+pub async fn bounded_body(response: reqwest::Response, limit: u64) -> Result<Vec<u8>, String> {
     if response.content_length().is_some_and(|n| n > limit) { return Err(invalid("下载超过大小限制")); }
     let mut stream = response.bytes_stream(); let mut bytes = Vec::new();
     while let Some(chunk) = stream.next().await {

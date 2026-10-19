@@ -135,6 +135,7 @@ python clients/build_linux.py --output-dir .build-tools/linux-debug
 - Android 原生存储与 HTTP 生命周期使用 `python clients/android/test_ui_updates.py --fixture .build-tools/client-update-fixture`；需要现有 JDK、Android SDK 以及固定 SHA-256 的测试用 `org.json:json:20240303` JAR（默认在 `.build-tools/client-ui-updates/android-tests/`）。该检查执行 JVM 断言并编译 Activity，不生成 APK。
 - 桌面原生检查为 `cargo test --manifest-path clients/desktop/Cargo.toml --locked`；本机回环 HTTP 测试应设置 `NO_PROXY=127.0.0.1,localhost`，避免系统代理介入隔离测试服务器。
 - 业务会话由原生网络层管理，保留 CSRF、服务端权限及认证；网站和站外视图不共享原生接口 Cookie 或通用原生命令权限。
+- 桌面端在 Unix 系统使用私有配置目录和会话文件，通过原子替换保存 Cookie。桌面端与 Android 的 API／附件预览响应最多读取 128 MiB，超过限额时返回错误；另存为下载仍使用流式处理。
 - 安装包检查包含本地资源清单、版本、真实架构、Linux 动态依赖和桌面入口；Ubuntu ARM64 的 GLIBC 上限为 2.35。
 - Windows、Android、Ubuntu ARM64、Fedora 的实际启动、导航、上传下载和业务操作分别记录。包检查、APK 签名与对齐通过不能替代目标系统运行验证。
 - 交付记录中的运行验证仅在确实执行后标记通过。模拟器测试与真机测试分别说明；未部署服务器不等于线上业务已经验收。
