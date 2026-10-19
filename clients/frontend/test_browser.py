@@ -167,6 +167,10 @@ def run():
             page.locator('#client-settings-open').click();page.locator('#server-url').wait_for(state='visible');page.locator('#settings-cancel').click()
             results.append('offline login and server settings')
             state['offline']=False;state['legacy']=True;page.locator('#connection-retry').click()
+            page.locator('#connection-status').filter(has_text='当前输入已保留').wait_for()
+            assert frame.locator('#login-form').is_visible()
+            results.append('incompatible retry preserves the existing local form')
+            page.reload()
             page.get_by_role('heading',name='服务器需要更新').wait_for()
             results.append('old server rejected without loading remote HTML')
             for legacy in ('html200','array200','object200'):
