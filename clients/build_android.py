@@ -55,6 +55,8 @@ def main():
         if not asset.is_relative_to(frontend.resolve()) or not asset.is_file() or hashlib.sha256(asset.read_bytes()).hexdigest() != digest:
             raise RuntimeError(f'Shared frontend asset is missing or changed: {name}')
     out = args.output_dir.resolve()
+    # The raster launcher icon is generated from the checked-in borderless SVG.
+    subprocess.run([sys.executable, str(CLIENT / 'build_icons.py')], cwd=ROOT, check=True)
     work = (SOURCE / 'build').resolve()
     # Compile from an empty directory so removed Java/DEX classes cannot survive.
     if work.parent != SOURCE.resolve():

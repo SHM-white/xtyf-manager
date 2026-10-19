@@ -132,11 +132,11 @@ python clients/build_linux.py --output-dir .build-tools/linux-debug
 
 ## GitHub Actions 测试安装包（仅供 PR 验收）
 
-现有 [Client validation](../.github/workflows/clients.yml) 在原有前端／Rust／Java 验证通过后，会在独立的 Windows、Ubuntu 22.04 和 Android SDK runner 构建实际客户端。打开 GitHub Actions → **Client validation** → 对应 PR 的运行 → **Artifacts**，获取以下产物：
+现有 [Client validation](../.github/workflows/clients.yml) 在原有前端／Rust／Java 验证通过后，使用 Windows x64／ARM64、Ubuntu 22.04 x64／ARM64 和 Android SDK runner 构建实际客户端。打开 GitHub Actions → **Client validation** → 对应 PR 的运行 → **Artifacts**，获取以下产物：
 
-- `xtyf-client-windows-x64`：Windows x64 NSIS `.exe`、`windows-verification.json` 与 SHA-256。
-- `xtyf-client-android-test-signed`：Android `.apk` 与 SHA-256。
-- `xtyf-client-linux`：Ubuntu 22.04 ARM64 `.deb`、Fedora x86_64 `.rpm`、`linux-verification.json` 与 SHA-256。
+- `xtyf-client-windows-x64` 和 `xtyf-client-windows-arm64`：两个独立架构的 NSIS `.exe`、安装包验证报告与 SHA-256。
+- `xtyf-client-linux-x64` 和 `xtyf-client-linux-arm64`：分别内含对应架构的 Ubuntu 22.04 `.deb`、Fedora `.rpm`、验证报告与 SHA-256。
+- `xtyf-client-android-test-signed`：一个通用 `.apk` 与 SHA-256。Android 原生层为纯 Java/WebView，没有 `.so` ABI 库，因此该 APK 同时支持 ARM64 和 x86_64，无需生成重复 APK。
 
 产物保留 14 天。CI 只使用 `clients/config.json` 的当前版本，不调用会递增版本的 `clients/release.py`，不创建 Release、不部署服务器、不上传任何密钥。Windows 未进行代码签名；Android 每次运行临时生成不同的测试签名密钥，**不能覆盖安装正式签名 APK，也不保证两次 CI 生成的 APK 可以相互覆盖升级**。这些测试安装包不属于正式交付，不应分发给生产用户。Linux 构建进行实际包结构、ELF 架构与依赖校验，但不能替代 Ubuntu ARM64 和 Fedora 的真机运行验收。
 
@@ -155,4 +155,4 @@ python clients/build_linux.py --output-dir .build-tools/linux-debug
 
 ## 应用图标源文件
 
-客户端图标使用 `static/brand/xtyf-red-blue.jpg` 中的原始红蓝队徽。在安装好固定版本的 Tauri CLI 后，运行 `python clients/build_icons.py` 可按原比例放入白底方形画布，生成桌面的 ICO、128/256 px PNG 和 Android 的 512 px PNG。Android 保留 `@drawable/ic_launcher` 入口，通过 `drawable-nodpi` 中的高清图缩放显示；图标留有边距，不拉伸队徽。此命令仅更新图标资源，不修改版本、不生成安装包；已安装客户端要在下次打包安装后才会使用新图标。
+原始彩色图标以透明 SVG 形式保存在 `clients/assets/xtyf-logo.svg`。旧 JPEG 转为白色方形图标时带来的上下白边已移除。图标只保留透明安全间距；桌面 PNG/ICO 与 Android 512px 启动图标属于 **构建输出**，由 `python clients/build_icons.py` 调用固定版本 Tauri CLI 生成，不进入 Git。首次运行前安装依赖：`npm ci --prefix clients/desktop`。所有 Actions 打包任务都会重新生成同一份图标；不会拿旧二进制图标冒充修复版本。
