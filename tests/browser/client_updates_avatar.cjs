@@ -53,8 +53,8 @@ async function main() {
     return {status:response.status(),headers,body:body.toString(binary?'base64':'utf8'),encoding:binary?'base64':'text'};
   }
   await transport({path:'/api/client/bootstrap'});
-  assert.equal((await transport({path:'/api/client/login',method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:'admin',password:'123456'})})).status,200);
-  assert.equal((await transport({path:'/api/password',method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({old:'123456',new:'client-avatar-test-password',confirm:'client-avatar-test-password'})})).status,200);
+  assert.equal((await transport({path:'/api/client/login',method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:'admin',password:'browser-test-initial'})})).status,200);
+  assert.equal((await transport({path:'/api/password',method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({old:'browser-test-initial',new:'client-avatar-test-password',confirm:'client-avatar-test-password'})})).status,200);
   for(const [label,engine,options] of [['chromium',chromium,{viewport:{width:1280,height:900}}],['webkit',webkit,devices['iPhone 13']]]) {
     activeEngine=label;activePhase='browser startup';
     browser=await engine.launch({headless:true});
