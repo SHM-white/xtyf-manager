@@ -83,7 +83,7 @@ async function login(page, base, username, password, firstLogin=true) {
         page.locator(`input[name=account-mode][value=${theme}]`).check(),
       ]);
       assert.equal(saved.status(),200);
-      assert.equal(await shortcut.getAttribute('aria-label'),theme==='dark'?'切换为银白蓝':'切换为深空蓝');
+      assert.equal(await shortcut.getAttribute('aria-label'),theme==='dark'?'切换为Mistral 暖橙':'切换为GitHub 暗黑');
       await page.reload();assert.equal(await page.locator('html').getAttribute('data-theme'),theme);
       await page.goto(base+'/tasks');await page.locator('[data-view="status"]').click();await page.locator(`.task[data-task-id="${blocked.id}"]`).waitFor();
       assert.match(await page.locator(`.task[data-task-id="${blocked.id}"]`).getAttribute('class'),/is-blocked.*is-due-soon/);
