@@ -97,7 +97,7 @@ def main():
     apk = out / f'XTYF-Manager-{config["version"]}.apk'
     run(java, '-jar', tools / 'lib/apksigner.jar', 'sign', '--ks', key, '--ks-key-alias', 'xtyf-manager', '--ks-pass', 'env:XTYF_KEY_PASSWORD', '--key-pass', 'env:XTYF_KEY_PASSWORD', '--v4-signing-enabled', 'false', '--out', apk, work / 'aligned.apk')
     run(java, '-jar', tools / 'lib/apksigner.jar', 'verify', '--verbose', '--print-certs', apk)
-    run(tools / 'zipalign.exe', '-c', '-v', '4', apk)
+    run(tools / ('zipalign' + extension), '-c', '-v', '4', apk)
     print(f'APK: {apk}\nSHA256: {hashlib.sha256(apk.read_bytes()).hexdigest()}')
 
 if __name__ == '__main__': main()
