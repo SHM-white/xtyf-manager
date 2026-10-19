@@ -32,6 +32,11 @@ async function ready(page) { await page.locator('#task-create-panel[open][aria-b
     await page.locator('#account-password-form [name=old]').fill('browser-test-initial');await page.locator('#account-password-form [name=new]').fill('task-center-password');await page.locator('#account-password-form [name=confirm]').fill('task-center-password');await page.locator('#account-password-form [type=submit]').click();await page.waitForURL(base+'/');
     const owner=(await api(page,'/api/member',{name:'机械负责人',username:'task_center_owner',password:'owner-password'})).body;
     await api(page,'/api/member',{name:'视觉负责人',username:'task_center_vision',password:'owner-password'});
+    const groups=(await api(page,'/api/data')).body.groups;
+    const mechanicalGroup=groups.find(g=>g.name==='机械'&&g.is_active!==0);
+    const visionGroup=groups.find(g=>g.name==='视觉'&&g.is_active!==0);
+    assert.ok(mechanicalGroup&&visionGroup,'specialty groups must be present');
+    const mechanical='group-'+mechanicalGroup.id,vision='group-'+visionGroup.id;
     await page.goto(base+'/tasks#create');await ready(page);
     assert.equal(await page.locator('#create-form [name=title]').evaluate(node=>node===document.activeElement),true);
     await page.locator('#create-form [name=title]').fill('保持草稿');await page.keyboard.press('Escape');
