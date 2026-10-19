@@ -39,6 +39,17 @@ class AlertsAndTopicLinksTest(unittest.TestCase):
         self.assertEqual(response.status_code, 201, response.get_json())
         return response.get_json()
 
+    def test_assets_and_management_alert_entry_are_rendered(self):
+        """Catch PR split regressions where new JS/CSS/routes are never mounted."""
+        for url in ('/', '/tasks?type=daily', '/discussions'):
+            with self.subTest(url=url):
+                response = self.admin.get(url)
+                self.assertEqual(response.status_code, 200)
+                markup = response.get_data(as_text=True)
+                self.assertIn('item-topics.js', markup)
+                self.assertIn('item-topics.css', markup)
+        self.assertIn('href="/task-alerts"', self.admin.get('/').get_data(as_text=True))
+
     def test_alerts_permission(self):
         self.assertEqual(self.owner.get('/api/task-alerts').status_code, 403)
         self.assertEqual(self.app.test_client().get('/api/task-alerts').status_code, 401)
