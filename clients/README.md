@@ -136,7 +136,7 @@ python clients/build_linux.py --output-dir .build-tools/linux-debug
 
 - `xtyf-client-windows-x64` 和 `xtyf-client-windows-arm64`：两个独立架构的 NSIS `.exe`、安装包验证报告与 SHA-256。
 - `xtyf-client-linux-x64` 和 `xtyf-client-linux-arm64`：分别内含对应架构的 Ubuntu 22.04 `.deb`、Fedora `.rpm`、验证报告与 SHA-256。
-- `xtyf-client-android-test-signed`：一个通用 `.apk` 与 SHA-256。Android 原生层为纯 Java/WebView，没有 `.so` ABI 库，因此该 APK 同时支持 ARM64 和 x86_64，无需生成重复 APK。
+- `xtyf-client-android-apk`：一个通用 `.apk` 与 SHA-256。Android 原生层为纯 Java/WebView，没有 `.so` ABI 库，因此该 APK 同时支持 ARM64 和 x86_64，无需生成重复 APK。
 
 产物保留 14 天。CI 只使用 `clients/config.json` 的当前版本，不调用会递增版本的 `clients/release.py`，不创建 Release、不部署服务器、不上传任何密钥。Windows 未进行代码签名；Android 每次运行临时生成不同的测试签名密钥，**不能覆盖安装正式签名 APK，也不保证两次 CI 生成的 APK 可以相互覆盖升级**。这些测试安装包不属于正式交付，不应分发给生产用户。Linux 构建进行实际包结构、ELF 架构与依赖校验，但不能替代 Ubuntu ARM64 和 Fedora 的真机运行验收。
 

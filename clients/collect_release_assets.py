@@ -20,7 +20,7 @@ def expected_artifacts(version: str) -> dict[str, list[str]]:
     return {
         "xtyf-client-windows-x64": [f"XTYF-Manager-Setup-{version}-x64.exe"],
         "xtyf-client-windows-arm64": [f"XTYF-Manager-Setup-{version}-arm64.exe"],
-        "xtyf-client-android-test-signed": [f"XTYF-Manager-{version}.apk"],
+        "xtyf-client-android-apk": [f"XTYF-Manager-{version}.apk"],
         "xtyf-client-linux-x64": [
             f"XTYF-Manager-{version}-amd64.deb",
             f"XTYF-Manager-{version}-x86_64.rpm",
@@ -81,7 +81,8 @@ def collect(artifacts_dir: Path, output_dir: Path, *, version: str, tag: str, ch
             package = directory / filename
             if not package.is_file() or package.is_symlink() or package.stat().st_size < 1024:
                 raise ValueError(f"Missing/invalid installer: {package}")
-            digest = hashlib.file_digest(package.open("rb"), "sha256").hexdigest()
+            with package.open("rb") as binary:
+                digest = hashlib.file_digest(binary, "sha256").hexdigest()
             if sums[filename] != digest:
                 raise ValueError(f"Checksum mismatch for {package}")
             records.append({"name": filename, "bytes": package.stat().st_size, "sha256": digest, "artifact": artifact})
