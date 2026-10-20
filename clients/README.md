@@ -156,3 +156,8 @@ python clients/build_linux.py --output-dir .build-tools/linux-debug
 ## 应用图标源文件
 
 原始彩色图标以透明 SVG 形式保存在 `clients/assets/xtyf-logo.svg`。旧 JPEG 转为白色方形图标时带来的上下白边已移除。图标只保留透明安全间距；桌面 PNG/ICO 与 Android 512px 启动图标属于 **构建输出**，由 `python clients/build_icons.py` 调用固定版本 Tauri CLI 生成，不进入 Git。首次运行前安装依赖：`npm ci --prefix clients/desktop`。所有 Actions 打包任务都会重新生成同一份图标；不会拿旧二进制图标冒充修复版本。
+
+
+## GitHub Actions 自动发布
+
+PR 的客户端构建全部通过后，同仓库 PR 自动发布 `YYYYMMDD-betaN` 测试 Pre-release；推送 `vX.Y.Z` 标签后自动发布正式 Release（须预先配置原 Android 签名密钥 Secrets）。发布前严格核对所有平台安装包 SHA-256 和版本，缺一不发布。详情与密钥配置步骤见 [Actions 版本发布指南](../.github/RELEASING.md)。
