@@ -2,7 +2,7 @@ name: CI
 
 on:
   pull_request:
-    branches: [main, "split/pr31-04-account-ui", "split/pr31-05-client-final"]
+    branches: [main]
 
 permissions:
   contents: read
@@ -132,6 +132,8 @@ jobs:
             .venv/*-check/*.json
             .build-tools/*-check/*.png
             .build-tools/*-check/*.json
+            .build-tools/seven-repairs-20261018/browser/*.png
+            .build-tools/seven-repairs-20261018/browser/*.json
           include-hidden-files: true
           if-no-files-found: ignore
 

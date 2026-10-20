@@ -28,8 +28,11 @@ class DeployExclusionsTest(unittest.TestCase):
 
     def test_build_products_are_not_deployed(self):
         values = excludes()
-        for name in (".venv", ".build-tools", "node_modules", "dist", "/client-ui-release/"):
+        for name in (".venv", ".build-tools", "node_modules", "dist"):
             self.assertIn(name, values, f"Unexpected build product: {name}")
+
+    def test_public_signed_update_bundle_is_kept(self):
+        self.assertNotIn("/client-ui-release/", excludes())
 
 
 if __name__ == "__main__":
