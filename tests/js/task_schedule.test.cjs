@@ -119,6 +119,9 @@ function modalFixture() {
   function classes(initial=[]) { const values=new Set(initial);return {add:x=>values.add(x),remove:x=>values.delete(x),contains:x=>values.has(x)}; }
   const events={},mask={classList:classes(["hidden"]),events:{},addEventListener(name,fn){this.events[name]=fn;}},button={focus(){}};
   const modal={innerHTML:"",classList:classes(),setAttribute(){},querySelector(){return button;},replaceChildren(){this.innerHTML="";}};
+  // Model the DOM className setter, which synchronizes classList in a browser.
+  let className = "";
+  Object.defineProperty(modal, "className", {get(){return className;},set(value){className=String(value??"");modal.classList=classes(className.split(/\s+/).filter(Boolean));}});
   const document={body:{classList:classes()},activeElement:button,getElementById(id){return {modal,"modal-mask":mask}[id]||null;},addEventListener(name,fn){events[name]=fn;}};
   const context={BusinessUI: { escape: (value) => String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])) }, document};vm.createContext(context);vm.runInContext(source("ui-dialog.js"),context);events.DOMContentLoaded();
   return {context,modal,mask,events};
