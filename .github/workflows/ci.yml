@@ -111,7 +111,7 @@ jobs:
         run: |
           set -euo pipefail
           failures=0
-          for suite in review_fixes pr22_merge task_center daily_mail action_failures login_mobile palette_workspace local_collaboration account_invoice_ui account_avatar client_updates_avatar task_schedule seven_repairs seven_repairs_review client_connection; do
+          for suite in review_fixes pr22_merge task_center daily_mail action_failures login_mobile palette_workspace local_collaboration account_invoice_ui account_avatar client_updates_avatar task_schedule seven_repairs seven_repairs_review client_connection assets; do
             echo "::group::Browser test: ${suite}"
             if ! node "tests/browser/${suite}.cjs"; then
               echo "::error::Browser suite ${suite} failed"
@@ -126,6 +126,8 @@ jobs:
         with:
           name: browser-e2e-diagnostics
           path: |
+            .build-tools/assets-check/*.png
+            .build-tools/assets-check/result.json
             .venv/login-password-check/*.png
             .venv/login-password-check/mobile-result.json
             .venv/pr22-merge-check/*.png
