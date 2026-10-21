@@ -162,6 +162,17 @@ def init_security(app):
 
     @app.before_request
     def protect_request():
+        # Bound asset writes before the shared audit logger parses their JSON.
+        # Support Flask 3.0 too (per-request max_content_length became writable in 3.1).
+        if request.endpoint in ("assets.operate", "assets.save_catalog"):
+            limit = 16 * 1024
+            if request.content_length is not None and request.content_length > limit:
+                return jsonify(ok=False, error="资产请求体超过 16 KiB 限制"), 413
+            if request.content_length is None:
+                raw = request.stream.read(limit + 1)
+                if len(raw) > limit:
+                    return jsonify(ok=False, error="资产请求体超过 16 KiB 限制"), 413
+                request._cached_data = raw  # Retain the bounded body for get_json/audit.
         user = current_user() if request.endpoint != "static" else None
         unsafe = request.method not in SAFE_METHODS
         if unsafe or request.endpoint in AUDITED_READS:

@@ -30,3 +30,5 @@
 #asset-form-status { color:var(--ux-danger); }
 .asset-workspace [hidden] { display:none !important; }
 @media(max-width:650px) { .asset-filters { grid-template-columns:1fr; } .asset-grid { grid-template-columns:1fr; } .asset-dialog { padding:18px; } }
+
+.asset-pending { display:flex; flex-wrap:wrap; gap:12px; align-items:center; padding:14px; border:1px solid var(--ux-stroke); border-radius:9px; margin:12px 0; }

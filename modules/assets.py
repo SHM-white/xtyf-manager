@@ -11,6 +11,8 @@ from modules.security import has_permission
 
 bp = Blueprint("assets", __name__)
 MAX_QUANTITY = 1_000_000_000
+MAX_ASSET_REQUEST_BYTES = 16 * 1024
+
 
 
 def migrate_assets(db):
@@ -118,9 +120,19 @@ def mutation(view):
     def wrapped(*args, **kwargs):
         db = get_db()
         try:
+            if request.content_length is not None and request.content_length > MAX_ASSET_REQUEST_BYTES:
+                raise Invalid("资产请求体超过 16 KiB 限制", 413)
             data = request.get_json(silent=True)
             if not isinstance(data, dict):
                 raise Invalid("请求必须是 JSON 对象")
+            catalog_fields = {"request_id", "name", "specification", "category", "unit",
+                              "kind", "id", "version", "active"}
+            operation_fields = {"request_id", "action", "reason", "occurred_at", "quantity",
+                                "loan_id", "item_id", "campus_id", "target_campus_id",
+                                "version", "event_id"}
+            allowed = catalog_fields if request.endpoint == "assets.save_catalog" else operation_fields
+            if set(data) - allowed:
+                raise Invalid("资产请求包含不支持的字段")
             key = text(data, "request_id", maximum=100)
             user = current_user()
             payload = json.dumps([request.path, data], sort_keys=True, ensure_ascii=False)
@@ -177,6 +189,7 @@ def page():
 def catalog():
     db = get_db()
     return jsonify(ok=True, can_manage=manager(), server_time=stamp(),
+                   member_id=current_user()["id"],
                    categories=[dict(r) for r in db.execute("SELECT * FROM asset_categories ORDER BY name,id")],
                    campuses=[dict(r) for r in db.execute("SELECT * FROM asset_campuses ORDER BY name,id")])
 
@@ -275,6 +288,19 @@ def operate(db, data):
         details = json.loads(original["details"])
         item_id, campus_id = original["item_id"], original["campus_id"]
         deltas = [(c, -d) for c, d in details["deltas"]]
+        if not row(db, "asset_items", item_id)["active"]:
+            raise Invalid("纠错涉及已停用物品，请先启用后核对", 409)
+        for affected_campus in {campus for campus, _ in deltas}:
+            if not row(db, "asset_campuses", affected_campus)["active"]:
+                raise Invalid("纠错涉及已停用校区，请先启用后核对", 409)
+            # An absolute stock count supersedes all earlier stock movements:
+            # undoing them afterward would silently invalidate the count.
+            if db.execute(
+                "SELECT 1 FROM asset_events WHERE item_id=? AND campus_id=? "
+                "AND action='adjust' AND id>? LIMIT 1",
+                (item_id, affected_campus, original["id"]),
+            ).fetchone():
+                raise Invalid("后续已有库存盘点，不能直接撤销此前记录；请重新盘点", 409)
         loan_id, loan_delta = details.get("loan_id"), -details.get("loan_delta", 0)
         if loan_id:
             loan = row(db, "asset_loans", loan_id)

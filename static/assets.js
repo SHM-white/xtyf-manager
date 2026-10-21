@@ -6,7 +6,36 @@
   const mine=params.get('view')==='mine';
   const names={receive:'入库',borrow:'借用',return:'归还',consume:'领用',adjust:'盘点调整',transfer:'校区调拨',correct:'纠错',catalog:'目录维护'};
   let catalog, detail, listing=[], loans=[], events=[], generation=0, listPage=1, loanPage=1, eventPage=1, eventCampus='';
-  let operation=null, pending=false, requestMemo=null, opener=null, serverReceivedAt=0;
+  let operation=null, pending=false, opener=null, serverReceivedAt=0;
+  // In-flight writes survive dialog closure, page reloads and packaged-view navigation.
+  // Namespace by server, then verify the user before ever replaying a saved write.
+  const serverScope=window.XTYF?.config?.serverUrl||location.origin;
+  const pendingKey='xtyf.assets.unconfirmed.v1:'+serverScope;
+  function readPending(){
+    try{
+      const value=JSON.parse(sessionStorage.getItem(pendingKey)||'null');
+      return value&&typeof value==='object'&&value.request_id&&value.path&&value.body?value:null;
+    }catch(_){return null;}
+  }
+  let unresolved=readPending();
+  function showPending(){
+    const host=$('asset-pending'),retry=$('asset-pending-retry');
+    host.hidden=!unresolved;
+    if(!unresolved)return;
+    const sameUser=catalog&&unresolved.actor_id===catalog.member_id;
+    $('asset-pending-message').textContent=sameUser?
+      '上一次提交结果尚未确认。新登记已暂停，请按原请求重试；服务器会识别重复请求。':
+      '存在其他账号尚未确认的登记。为防止误记到当前账号，请先使用原账号核对。';
+    retry.hidden=!sameUser;
+  }
+  function rememberPending(value){
+    sessionStorage.setItem(pendingKey,JSON.stringify(value));
+    unresolved=value;showPending();
+  }
+  function forgetPending(){
+    sessionStorage.removeItem(pendingKey);
+    unresolved=null;showPending();
+  }
   const dialog=$('asset-dialog'), form=$('asset-form'), filter=$('asset-filter');
   const requestId=()=>Array.from(crypto.getRandomValues(new Uint8Array(16)),v=>v.toString(16).padStart(2,'0')).join('');
   const status=(message)=>{$('asset-status').textContent=message;};
@@ -48,7 +77,7 @@
     const own=++generation;
     $('asset-content').setAttribute('aria-busy','true');status('正在加载…');
     try{
-      const c=await api('catalog'); if(own!==generation)return; catalog=c;serverReceivedAt=Date.now();
+      const c=await api('catalog'); if(own!==generation)return; catalog=c;serverReceivedAt=Date.now();showPending();
       $('asset-create').hidden=!c.can_manage||!!itemId||mine;
       $('asset-campuses').hidden=!c.can_manage;
       $('asset-categories').hidden=!c.can_manage;
@@ -99,9 +128,27 @@
     return input('occurred_at','登记时间（北京时间）',time,'type="datetime-local" required')+
       '<p class="asset-muted">可补登记实际发生时间；提交时间由服务器另行记录。</p>';
   }
+  function recoverPending(){
+    if(!unresolved)return;
+    if(!catalog||unresolved.actor_id!==catalog.member_id){
+      status('待确认记录属于其他登录账号，不能使用当前身份重试。');return;
+    }
+    opener=document.activeElement;operation={recovery:true};
+    const body=unresolved.body;
+    $('asset-dialog-title').textContent='恢复待确认操作';
+    $('asset-fields').innerHTML=
+      '<p>只会重发原来的完整请求及相同标识，不会再登记第二笔。</p>'+
+      '<p>操作：'+esc(names[body.action]||'目录维护')+' · 数量：'+esc(body.quantity??'—')+'</p>'+
+      '<p>用途／原因：'+esc(body.reason||'目录维护')+'</p>';
+    $('asset-form-status').textContent='';
+    $('asset-save').textContent='重试原请求';
+    $('asset-save').hidden=false;dialog.showModal();
+  }
   function open(title,fields,path,base,numberKeys=[]){
-    opener=document.activeElement;operation={path,base,numberKeys};requestMemo=null;
+    if(unresolved){recoverPending();return;}
+    opener=document.activeElement;operation={path,base,numberKeys};
     $('asset-dialog-title').textContent=title;$('asset-fields').innerHTML=fields;$('asset-form-status').textContent='';
+    $('asset-save').textContent='确认保存';
     $('asset-save').hidden=false;dialog.showModal();
   }
   function catalogEditor(kind,value={}){
@@ -175,21 +222,37 @@
   form.addEventListener('change',e=>{if(e.target.name==='campus_id')updateCampusBalance();});
   form.addEventListener('submit',async e=>{
     e.preventDefault();if(pending||!operation)return;
-    const body={...operation.base};
-    for(const [key,value] of new FormData(form))body[key]=operation.numberKeys.includes(key)?Number(value):key==='active'?value==='true':value;
-    if(operation.campuses&&body.action==='adjust')body.version=operation.campuses.find(c=>c.id===body.campus_id)?.stock_version;
-    const signature=JSON.stringify(body);
-    if(requestMemo&&requestMemo.uncertain&&requestMemo.signature!==signature){
-      $('asset-form-status').textContent='上次提交结果尚未确认，请恢复原内容重试，或取消后刷新核对。';return;
+    const recovery=!!operation.recovery;
+    const body=recovery?unresolved?.body:{...operation.base};
+    if(!body)return;
+    if(!recovery){
+      for(const [key,value] of new FormData(form))body[key]=operation.numberKeys.includes(key)?Number(value):key==='active'?value==='true':value;
+      if(operation.campuses&&body.action==='adjust')body.version=operation.campuses.find(c=>c.id===body.campus_id)?.stock_version;
     }
-    if(!requestMemo||requestMemo.signature!==signature)requestMemo={signature,key:requestId(),uncertain:false};
+    if(unresolved&&(unresolved.actor_id!==catalog?.member_id||
+        unresolved.path!==(recovery?unresolved.path:operation.path)||
+        JSON.stringify(unresolved.body)!==JSON.stringify(body))){
+      $('asset-form-status').textContent='上一笔操作尚未确认，不能修改内容或新增登记；关闭弹窗后选择“重试原请求”。';
+      return;
+    }
+    let saved=unresolved;
+    if(!saved){
+      saved={actor_id:catalog.member_id,path:operation.path,body,request_id:requestId()};
+      try{rememberPending(saved);}
+      catch(_){
+        $('asset-form-status').textContent='无法安全保存待确认请求，请检查浏览器会话存储设置后重试。';
+        return;
+      }
+    }
     pending=true;$('asset-save').disabled=true;$('asset-close').disabled=true;$('asset-form-status').textContent='正在保存…';
     try{
-      await api(operation.path,{...body,request_id:requestMemo.key});
+      await api(saved.path,{...saved.body,request_id:saved.request_id});
+      forgetPending();
       dialog.close();opener?.focus();const refreshed=await load();if(refreshed)status('已保存。');
     }catch(error){
-      requestMemo.uncertain=!error.status||error.status>=500;
-      $('asset-form-status').textContent=error.message+(requestMemo.uncertain?'；结果尚未确认，重试会核对同一笔请求，不会重复扣库。':'');
+      const unknown=!error.status||error.status>=500;
+      if(!unknown)forgetPending();
+      $('asset-form-status').textContent=error.message+(unknown?'；结果尚未确认，可重试原请求；刷新或重新打开页面后仍会保留该请求。':'');
       $('asset-form-status').focus();
     }finally{pending=false;$('asset-save').disabled=false;$('asset-close').disabled=false;}
   });
@@ -208,6 +271,7 @@
   $('asset-create').onclick=()=>catalogEditor('items');
   $('asset-campuses').onclick=()=>directoryManager('campuses');
   $('asset-categories').onclick=()=>directoryManager('categories');
+  $('asset-pending-retry').onclick=()=>recoverPending();
   $('asset-refresh').onclick=()=>load();
   filter.onsubmit=e=>{e.preventDefault();listPage=1;load();};
   filter.addEventListener('change',e=>{

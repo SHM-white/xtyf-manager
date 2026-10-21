@@ -278,6 +278,57 @@ class AssetsTest(unittest.TestCase):
         self.post(self.admin, "/api/assets/catalog/campuses",
                   dict(id=self.campus, name="合成东校区", active=False, version=1), 409)
 
+
+    def test_correction_refuses_after_newer_absolute_stock_count(self):
+        receipt = self.op("receive", 10)
+        first_count = self.op("adjust", 5, version=self.stock()["stock_version"])
+        self.op("adjust", 7, version=self.stock()["stock_version"])
+        self.op("correct", event_id=first_count["event_id"], status=409)
+        self.op("correct", event_id=receipt["event_id"], status=409)
+        self.assertEqual(self.stock()["available"], 7)
+        records = self.admin.get(f"/api/assets/events?item_id={self.item}").get_json()["events"]
+        self.assertFalse(any(e["action"] == "correct" for e in records))
+
+    def test_transfer_correction_refuses_after_target_campus_count(self):
+        self.op("receive", 10)
+        moved = self.op("transfer", 4, target_campus_id=self.other)
+        self.post(self.admin, "/api/assets/operations", {
+            "action": "adjust", "item_id": self.item, "campus_id": self.other,
+            "quantity": 3, "version": self.stock(campus=self.other)["stock_version"],
+            "reason": "合成目标校区盘点"})
+        self.op("correct", event_id=moved["event_id"], status=409)
+        self.assertEqual(self.stock()["available"], 6)
+        self.assertEqual(self.stock(campus=self.other)["available"], 3)
+
+    def test_correction_rejects_inactive_campus_and_item(self):
+        self.op("receive", 5)
+        counted = self.op("adjust", 0, version=self.stock()["stock_version"])
+        self.post(self.admin, "/api/assets/catalog/campuses", {
+            "id": self.campus, "name": "合成东校区", "version": 1, "active": False})
+        self.op("correct", event_id=counted["event_id"], status=409)
+        self.assertEqual(self.stock()["available"], 0)
+        self.post(self.admin, "/api/assets/catalog/campuses", {
+            "id": self.campus, "name": "合成东校区", "version": 2, "active": True})
+        self.post(self.admin, "/api/assets/catalog/items", {
+            "id": self.item, "name": "合成电机", "unit": "个",
+            "kind": "returnable", "version": 1, "active": False})
+        self.op("correct", event_id=counted["event_id"], status=409)
+        self.assertEqual(self.stock()["available"], 0)
+
+    def test_assets_reject_large_payload_and_unsupported_fields(self):
+        self.post(self.member, "/api/assets/operations", {
+            "action": "receive", "item_id": self.item, "campus_id": self.campus,
+            "quantity": 1, "reason": "合成测试", "debug": "extra"}, 400)
+        self.post(self.member, "/api/assets/operations", {
+            "action": "receive", "item_id": self.item, "campus_id": self.campus,
+            "quantity": 1, "reason": "合成测试", "padding": "x" * 20000}, 413)
+        self.post(self.admin, "/api/assets/catalog/items", {
+            "name": "恶意冗余字段", "unit": "个", "kind": "returnable",
+            "padding": "x" * 20000}, 413)
+        self.assertEqual(self.stock()["available"], 0)
+        self.assertFalse(any(r["name"] == "恶意冗余字段" for r in
+                             self.admin.get("/api/assets/items").get_json()["items"]))
+
     def test_correction_refuses_after_downstream_use(self):
         receipt = self.op("receive", 5)
         borrowed = self.op("borrow", 4, self.member)

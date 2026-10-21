@@ -78,8 +78,19 @@ async function main(){
     });
     await page.locator('#asset-save').click();await page.locator('#asset-form-status').filter({hasText:'结果尚未确认'}).waitFor();
     assert.equal(await page.locator('#asset-form [name=quantity]').inputValue(),'3');
-    await page.locator('#asset-save').click();await page.locator('#asset-dialog').waitFor({state:'hidden'});
+    const borrowEventsBefore=(await (await api.get(`/api/assets/events?item_id=${id}`)).json()).events.filter(e=>e.action==='borrow').length;
+    await page.locator('#asset-form [name=quantity]').fill('4');
+    await page.locator('#asset-save').click();
+    await page.locator('#asset-form-status').filter({hasText:'不能修改内容'}).waitFor();
+    assert.equal((await (await api.get(`/api/assets/items/${id}`)).json()).campuses.find(c=>c.id===campus).available,7);
+    // Reloading the page must not lose a committed-but-unacknowledged request.
+    await page.reload();await page.locator('#asset-pending-retry').waitFor({state:'visible'});
+    await page.locator('#asset-pending-retry').click();
+    await page.getByRole('button',{name:'重试原请求',exact:true}).click();
+    await page.locator('#asset-dialog').waitFor({state:'hidden'});
+    await page.locator('#asset-pending').waitFor({state:'hidden'});
     await eastCard.getByText('总量 · 在库 7 / 借出 3',{exact:true}).waitFor();
+    assert.equal((await (await api.get(`/api/assets/events?item_id=${id}`)).json()).events.filter(e=>e.action==='borrow').length,borrowEventsBefore);
     await page.unroute('**/api/assets/operations');
     await page.getByRole('link',{name:'我的借用',exact:true}).click();
     await page.locator('#asset-content [data-action=return]').first().click();

@@ -13,6 +13,10 @@
     <button class="btn primary" id="asset-create" type="button" hidden>新增物品</button>
   </nav>
   <p id="asset-status" role="status" aria-live="polite" tabindex="-1"></p>
+  <div id="asset-pending" class="asset-pending" role="alert" hidden>
+    <span id="asset-pending-message"></span>
+    <button class="btn" id="asset-pending-retry" type="button">重试上次提交</button>
+  </div>
   <form id="asset-filter" class="asset-filters">
     <label>名称或规格<input name="q" type="search" maxlength="120" placeholder="例如：M3 螺丝、3508 电机"></label>
     <label>校区<select name="campus_id"><option value="">全部校区</option></select></label>
