@@ -32,7 +32,7 @@ async function main(){
     const id=created.id;
     await page.goto(base+'/assets/detail?id='+id);
     await page.locator('#asset-status').filter({hasText:'数据已更新'}).waitFor();
-    await page.locator('[data-action=units]').click();
+    await page.getByRole('button',{name:'管理单件',exact:true}).click();
     await page.locator('#asset-unit-drawer[open]').waitFor();
     await page.locator('#asset-unit-content [data-unit-action=receive]').click();
     await page.locator('#asset-form [name=campus_id]').selectOption(String(campus));
