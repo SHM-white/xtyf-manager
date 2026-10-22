@@ -139,16 +139,26 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - group: foundation
-            suites: 'review_fixes pr22_merge action_failures login_mobile'
-          - group: tasks
-            suites: 'task_center task_schedule daily_mail seven_repairs seven_repairs_review'
-          - group: ui-and-clients
-            suites: 'palette_workspace local_collaboration account_avatar account_invoice_ui client_updates_avatar client_connection'
-          - group: assets
-            suites: 'assets assets_serialized'
+          - group: foundation-core
+            suites: 'review_fixes pr22_merge'
+          - group: foundation-login
+            suites: 'action_failures login_mobile'
+          - group: tasks-core
+            suites: 'task_center task_schedule'
+          - group: tasks-mail
+            suites: 'daily_mail'
+          - group: tasks-repairs
+            suites: 'seven_repairs seven_repairs_review'
+          - group: ui-core
+            suites: 'palette_workspace local_collaboration account_avatar'
+          - group: ui-clients
+            suites: 'account_invoice_ui client_updates_avatar client_connection'
+          - group: assets-ledger
+            suites: 'assets'
+          - group: assets-serialized
+            suites: 'assets_serialized'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 18
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -163,10 +173,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Install pinned Playwright and browser engines
-        run: |
-          npm install --no-save --package-lock=false playwright@1.56.1 bootstrap@5.3.3 bootstrap-icons@1.11.3
-          npx playwright install --with-deps chromium webkit
+      - name: Install pinned Playwright packages
+        run: npm install --no-save --package-lock=false playwright@1.56.1 bootstrap@5.3.3 bootstrap-icons@1.11.3
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-v1.56.1
+      - name: Install browser engines and system dependencies
+        shell: bash
+        run: timeout 480s npx playwright install --with-deps chromium webkit
       - name: Run browser integration and mobile checks
         shell: bash
         env:
