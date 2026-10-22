@@ -848,5 +848,11 @@ class DailyMailTest(unittest.TestCase):
         states={row['kind']:row['state'] for row in self.db.execute(
             "SELECT kind,state FROM mail_jobs WHERE member_id=?",(self.mid,))}
         self.assertEqual(states['verify'],'pending')
-        for kind in ('morning','daily','countdown'):
-            self.assertEqual(states[kind],'skipped')
+        self.assertEqual(states['daily'],'skipped')
+        self.assertEqual(states['morning'],'pending')
+        self.assertEqual(states['countdown'],'pending')
+        # Saving the same settings is a no-op for already queued mail.
+        self.member.post('/api/account/email/preferences',json=prefs)
+        self.assertEqual(self.db.execute(
+            "SELECT state FROM mail_jobs WHERE member_id=? AND kind='morning'",(self.mid,)).fetchone()[0],
+            'pending')
