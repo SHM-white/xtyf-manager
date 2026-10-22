@@ -68,7 +68,7 @@ async function main(){
     await page.locator('#asset-status').filter({hasText:'数据已更新'}).waitFor();
     const id=Number(new URL(page.url()).searchParams.get('id'));
     const eastCard=page.locator('.asset-card').filter({has:page.getByRole('heading',{name:'合成东校区',exact:true})});
-    await eastCard.getByRole('button',{name:'入库',exact:true}).click();
+    await eastCard.getByRole('button',{name:'补货入库',exact:true}).click();
     await page.locator('#asset-form [name=quantity]').fill('10');await page.locator('#asset-form [name=reason]').fill('合成入库');
     await page.locator('#asset-save').click();await page.locator('#asset-dialog').waitFor({state:'hidden'});
     await eastCard.getByText('总量 · 在库 10 / 借出 0',{exact:true}).waitFor();
