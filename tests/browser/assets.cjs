@@ -108,7 +108,7 @@ async function main(){
     await page.locator('#asset-form [name=target_campus_id]').selectOption(String(west));await page.locator('#asset-form [name=reason]').fill('合成调拨');
     await page.locator('#asset-save').click();await page.locator('#asset-dialog').waitFor({state:'hidden'});
     await eastCard.getByText('总量 · 在库 6 / 借出 2',{exact:true}).waitFor();
-    await page.locator('#asset-event-campus').selectOption(String(west));
+    await page.locator('[data-asset-detail-view=history]').click();await page.locator('#asset-event-campus').selectOption(String(west));
     await page.waitForFunction(()=>document.querySelectorAll('.asset-log li').length===1);
     await page.locator('.asset-log').getByText('合成调拨',{exact:true}).waitFor();
     const loans=(await (await api.get(`/api/assets/loans?item_id=${id}`)).json()).loans;
