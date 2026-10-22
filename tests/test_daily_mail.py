@@ -770,7 +770,7 @@ class DailyMailTest(unittest.TestCase):
                                          (self.mid,)).fetchone()[0],1)
 
     def test_half_day_personal_window_and_configurable_team_cadence(self):
-        generation=self.bind()
+        self.bind()
         self.task(owner_id=self.mid)
         morning=self.at.replace(hour=8)
         prefs=self.member.get('/api/account/email').get_json()['preferences']
