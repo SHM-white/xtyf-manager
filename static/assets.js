@@ -4,6 +4,8 @@
   const $=id=>document.getElementById(id), esc=window.BusinessUI.escape;
   const params=new URLSearchParams(location.search), itemId=Number(params.get('id'))||null;
   const mine=params.get('view')==='mine';
+  const validAssetViews=['all','equipment','quantity','supply','attention'];
+  let assetView=validAssetViews.includes(params.get('type'))?params.get('type'):'all';
   const names={receive:'入库',borrow:'借用',return:'归还',consume:'领用',adjust:'盘点调整',transfer:'校区调拨',correct:'纠错',catalog:'目录维护',supply_status:'耗材状态'};
   let catalog, detail, listing=[], loans=[], events=[], generation=0, listPage=1, loanPage=1, eventPage=1, eventCampus='';
   let operation=null, pending=false, opener=null, serverReceivedAt=0;
@@ -67,8 +69,8 @@
     return (empty?`<option value="">${empty}</option>`:'')+values.map(v=>`<option value="${esc(v.id)}"${String(v.id)===String(selected)?' selected':''}>${esc(v.name)}${v.active===0?'（停用）':''}</option>`).join('');
   }
   const supplyName=value=>value==='sufficient'?'充足':'不足';
-  function supplyCards(item,campuses){
-    return '<p class="asset-muted">自由取用，无需扫码或逐次登记；不足时标记，补齐后恢复充足。</p>'+campuses.map(c=>
+  function supplyCards(item,campuses,compact=false){
+    return (compact?'':'<p class="asset-muted">自由取用，无需扫码或逐次登记；不足时标记，补齐后恢复充足。</p>')+campuses.map(c=>
       `<div class="asset-supply"><span>${esc(c.name)}${c.active?'':'（停用）'} · <strong class="asset-supply-${c.supply_status}">${supplyName(c.supply_status)}</strong></span>`+
       (item.active&&c.active?`<button type="button" class="btn" data-supply-item="${item.id}" data-campus="${c.id}" data-supply-status="${c.supply_status==='sufficient'?'low':'sufficient'}">${c.supply_status==='sufficient'?'标记不足':'补齐了，标记充足'}</button>`:'')+'</div>').join('');
   }
@@ -109,6 +111,21 @@
         ${catalog.can_manage&&!e.correction_id&&!e.details.mode_reset&&['receive','adjust','transfer','consume','borrow','return'].includes(e.action)?button('correct','登记纠错',e.id):''}</li>`;
     }).join('')}</ol>${data.total?'':'<p class="asset-empty">暂无记录。</p>'}${pager('events',data.page,data.total)}`;
   }
+  function updateAssetViews(summary){
+    for(const button of document.querySelectorAll('[data-asset-view]')){
+      const view=button.dataset.assetView;
+      button.setAttribute('aria-pressed',String(view===assetView));
+      const count=button.querySelector('.asset-view-count');
+      if(count)count.textContent=String(summary?.[view]??0);
+    }
+  }
+  function clearAssetFilters(){
+    filter.elements.q.value='';
+    filter.elements.campus_id.value='';
+    filter.elements.category.value='';
+    assetView='all';listPage=1;load();
+    filter.elements.q.focus();
+  }
   async function load(){
     const own=++generation;
     $('asset-content').setAttribute('aria-busy','true');status('正在加载…');
@@ -116,6 +133,14 @@
       const c=await api('catalog'); if(own!==generation)return; catalog=c;serverReceivedAt=Date.now();showPending();
       $('asset-create').hidden=(!c.can_manage&&!window.AssetScan)||!!itemId||mine;
       $('asset-add-manual').hidden=!c.can_manage;
+      $('asset-admin-tools').hidden=!c.can_manage||!!itemId||mine;
+      $('asset-view-filters').hidden=!!itemId||mine;
+      $('asset-result-summary').hidden=!!itemId||mine;
+      $('asset-back').hidden=!itemId;
+      for(const link of document.querySelectorAll('[data-asset-nav]')){
+        if((link.dataset.assetNav==='mine')===mine&&!itemId)link.setAttribute('aria-current','page');
+        else link.removeAttribute('aria-current');
+      }
       $('asset-campuses').hidden=!c.can_manage;
       $('asset-categories').hidden=!c.can_manage;
       filter.hidden=!!itemId||mine;
@@ -141,18 +166,21 @@
         $('asset-title').textContent='我的借用';$('asset-content').innerHTML=renderLoans(l);
         if(window.AssetUnits){await window.AssetUnits.loadMine();if(own!==generation)return;}
       }else{
-        const search=new URLSearchParams({q:filter.elements.q.value,campus_id:filter.elements.campus_id.value,category:filter.elements.category.value,page:String(listPage)});
+        const search=new URLSearchParams({q:filter.elements.q.value,campus_id:filter.elements.campus_id.value,category:filter.elements.category.value,view:assetView,page:String(listPage)});
         const data=await api('items?'+search);if(own!==generation)return;listing=data.items;
         const category=filter.elements.category.value;
         filter.elements.category.innerHTML=options(data.categories.map(v=>({id:v,name:v})),category,'全部类别');
-        $('asset-content').innerHTML=data.items.length?`<div class="asset-grid">${data.items.map(i=>`<article class="asset-card"${i.active&&i.tracking!=='status'?` data-register="${i.id}"`:''}>
+        updateAssetViews(data.summary);
+        $('asset-result-summary').textContent=`共 ${data.total} 种物料 · 第 ${data.page} 页（每页最多 20 种）`;
+
+        $('asset-content').innerHTML=data.items.length?`<div class="asset-list">${data.items.map(i=>`<article class="asset-card asset-list-row">
           <span class="asset-tag">${i.tracking==='status'?'耗材 · 充足／不足':i.kind==='returnable'?'可借用品':'耗材'}${i.active?'':' · 停用'}</span>
           <h2><a ${i.tracking==='unit'?'data-unit-model="'+i.id+'"':''} href="/assets/detail?id=${i.id}">${esc(i.name)}</a></h2><p>${esc(i.specification)||'未填写规格'} · ${esc(i.category)||'未分类'}</p>
-          ${i.tracking==='status'?supplyCards(i,i.supplies):`<span class="asset-count">${i.kind==='returnable'?i.total:i.available} <small>${esc(i.unit)}</small></span>
-          <p>${i.kind==='returnable'?`总量 · 在库 ${i.available} / 借出 ${i.borrowed}`:`剩余库存 · 累计领用 ${i.consumed}`}</p>`}
+          ${i.tracking==='status'?`<div class="asset-row-stock">${supplyCards(i,i.supplies,true)}</div>`:`<div class="asset-row-stock"><span class="asset-count">${i.kind==='returnable'?i.total:i.available} <small>${esc(i.unit)}</small></span>
+          <p>${i.kind==='returnable'?`总量 · 在库 ${i.available} / 借出 ${i.borrowed}`:`剩余库存 · 累计领用 ${i.consumed}`}</p></div>`}
           <div class="asset-actions">${i.active&&i.tracking!=='status'?button('register',i.tracking==='unit'?'管理单件':i.kind==='returnable'?'登记借用':'登记领用',i.id)+(i.tracking==='unit'?'':button('quantity','调整数量',i.id)):''}
           ${c.can_manage?button('edit-item','编辑物品',i.id):''}${window.AssetLabels?button('print-item','打印物料标签',i.id):''}</div></article>`).join('')}</div>${pager('items',data.page,data.total)}`:
-          '<p class="asset-empty">暂无符合条件的物品。管理员可先配置校区，再新增物品并登记入库。</p>';
+          '<div class="asset-empty"><p>没有找到符合条件的物料。可以换个关键词或清除筛选条件。</p><button class="btn asset-reset" id="asset-clear-empty" type="button">清除筛选</button></div>';
       }
       status('数据已更新。');document.dispatchEvent(new CustomEvent('assets-loaded'));return true;
     }catch(e){if(own===generation)status(e.message+'；可点击“刷新数据”重试。');return false;}
@@ -370,6 +398,18 @@
   $('asset-pending-retry').onclick=()=>recoverPending();
   $('asset-refresh').onclick=()=>load();
   filter.onsubmit=e=>{e.preventDefault();listPage=1;load();};
+  let assetSearchTimer=null;
+  filter.elements.q.addEventListener('input',()=>{
+    clearTimeout(assetSearchTimer);
+    assetSearchTimer=setTimeout(()=>{listPage=1;load();},350);
+  });
+  $('asset-filter-reset').onclick=clearAssetFilters;
+  document.addEventListener('click',event=>{
+    const viewButton=event.target.closest('[data-asset-view]');
+    if(viewButton){
+      assetView=viewButton.dataset.assetView;listPage=1;load();
+    }else if(event.target.closest('#asset-clear-empty'))clearAssetFilters();
+  });
   filter.addEventListener('change',e=>{
     if(e.target.name==='campus_id'||e.target.name==='category'){listPage=1;load();}
   });
