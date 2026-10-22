@@ -44,15 +44,27 @@ def save_preferences(mid, body):
         if not db.execute('SELECT 1 FROM members WHERE id=?', (mid,)).fetchone():
             db.rollback()
             return failure('成员不存在', 404)
+        previous = email_preferences(
+            db.execute('SELECT * FROM member_email WHERE member_id=?', (mid,)).fetchone())
         db.execute("INSERT OR IGNORE INTO member_email(member_id,address,generation,requested_at) "
                    "VALUES(?,'','',0)", (mid,))
         db.execute(
             'UPDATE member_email SET ' + ','.join(f'{key}=?' for key in PREF_FIELDS) + ' WHERE member_id=?',
             (*[int(body[key]) if key.endswith('_enabled') else body[key] for key in PREF_FIELDS], mid))
-        # Preferences apply immediately. Old queued periodics must not be delivered later.
-        db.execute("UPDATE mail_jobs SET state='skipped',error='成员邮件偏好已变更',finished_at=? "
-                   "WHERE member_id=? AND state='pending' AND kind IN "
-                   "('morning','morning_pm','daily','countdown')", (epoch_now(), mid))
+        # Only invalidate the categories actually changed, never verification codes.
+        changed = []
+        if any(previous[key] != body[key] for key in ('morning_interval_hours','morning_enabled')):
+            changed.extend(('morning','morning_pm'))
+        if any(previous[key] != body[key] for key in ('daily_interval_days','daily_enabled')):
+            changed.append('daily')
+        if any(previous[key] != body[key] for key in ('countdown_interval_days','countdown_enabled')):
+            changed.append('countdown')
+        if changed:
+            placeholders = ','.join('?' for _ in changed)
+            db.execute(
+                f"UPDATE mail_jobs SET state='skipped',error='成员邮件偏好已变更',finished_at=? "
+                f"WHERE member_id=? AND state='pending' AND kind IN ({placeholders})",
+                (epoch_now(), mid, *changed))
         db.commit()
     except Exception:
         db.rollback()
