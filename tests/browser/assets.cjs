@@ -104,7 +104,7 @@ async function main(){
     await page.locator('#asset-content[aria-busy=false]').waitFor();
     await page.goto(base+`/assets/detail?id=${id}`);await page.locator('#asset-status').filter({hasText:'数据已更新'}).waitFor();
     await page.reload();await page.locator('#asset-status').filter({hasText:'数据已更新'}).waitFor();
-    await eastCard.getByRole('button',{name:'校区调拨',exact:true}).click();await page.locator('#asset-form [name=quantity]').fill('2');
+    await eastCard.locator('summary').click();await eastCard.getByRole('button',{name:'校区调拨',exact:true}).click();await page.locator('#asset-form [name=quantity]').fill('2');
     await page.locator('#asset-form [name=target_campus_id]').selectOption(String(west));await page.locator('#asset-form [name=reason]').fill('合成调拨');
     await page.locator('#asset-save').click();await page.locator('#asset-dialog').waitFor({state:'hidden'});
     await eastCard.getByText('总量 · 在库 6 / 借出 2',{exact:true}).waitFor();
