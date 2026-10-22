@@ -43,3 +43,68 @@
 #asset-camera-video{width:100%;max-height:45vh;object-fit:contain}#asset-label-preview canvas{display:block;margin:1rem auto;border:1px solid #888}
 
 .asset-workspace [hidden],.asset-dialog [hidden]{display:none!important}
+
+
+/* Inventory UX: separate primary navigation, management tools, and everyday stock rows. */
+.asset-page-header { align-items:flex-end; padding-block:8px 14px; }
+.asset-page-header h1 { font-size:clamp(26px,3vw,34px); line-height:1.15; }
+.asset-page-header .asset-muted { margin:10px 0 0; max-width:54rem; }
+.asset-header-actions { display:flex; gap:10px; flex-wrap:wrap; }
+.asset-back { display:inline-block; margin-bottom:8px; font-size:14px; }
+.asset-main-nav { border-bottom:1px solid var(--ux-stroke); padding-bottom:0; margin:4px 0 8px; gap:20px; }
+.asset-main-link { display:inline-block; text-decoration:none; padding:12px 4px 14px; color:var(--ux-muted); border-bottom:3px solid transparent; font-weight:650; }
+.asset-main-link[aria-current="page"] { color:var(--ux-text); border-bottom-color:var(--ux-text); }
+.asset-admin-tools { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin:12px 0 16px; padding:12px; background:color-mix(in srgb,var(--ux-text) 4%,var(--ux-surface)); border-radius:12px; }
+.asset-admin-tools .btn { min-height:36px; font-size:13px; padding:6px 12px; }
+.asset-tools-label { color:var(--ux-muted); font-size:13px; font-weight:650; margin-right:4px; }
+.asset-discovery { background:var(--ux-surface); border:1px solid var(--ux-stroke); padding:14px 16px; border-radius:14px; margin-top:10px; }
+.asset-discovery .asset-filters { grid-template-columns:minmax(160px,2fr) minmax(116px,1fr) minmax(116px,1fr) auto auto; margin:0; gap:10px; }
+.asset-discovery label { font-size:13px; color:var(--ux-muted); font-weight:650; }
+.asset-discovery input,.asset-discovery select { margin-top:2px; }
+.asset-view-filters { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:14px; }
+.asset-view-button { display:inline-flex; align-items:center; gap:8px; cursor:pointer; font:inherit; font-size:13px; font-weight:650; padding:8px 12px; border:1px solid var(--ux-stroke); border-radius:8px; color:var(--ux-text); background:transparent; min-height:39px; }
+.asset-view-button[aria-pressed="true"] { border-color:var(--ux-text); background:color-mix(in srgb,var(--ux-text) 8%,var(--ux-surface)); }
+.asset-view-button:focus-visible,.asset-main-link:focus-visible { outline:3px solid var(--ux-text); outline-offset:3px; }
+.asset-view-count { color:var(--ux-muted); font-variant-numeric:tabular-nums; font-weight:500; }
+.asset-result-summary { margin:14px 1px; color:var(--ux-muted); font-size:13px; }
+.asset-list { display:grid; grid-template-columns:minmax(0,1fr); gap:10px; }
+.asset-list-row { display:grid; grid-template-columns:minmax(180px,2fr) minmax(170px,1.15fr) minmax(210px,1.5fr); gap:12px 18px; align-items:center; border-radius:12px; padding:16px 18px; }
+.asset-list-row:hover { border-color:var(--ux-text); }
+.asset-list-row > .asset-tag { grid-column:1; grid-row:1; justify-self:start; }
+.asset-list-row > h2 { grid-column:1; grid-row:2; font-size:17px; margin:0; }
+.asset-list-row > h2 a { text-decoration:none; }
+.asset-list-row > h2 a:hover { text-decoration:underline; }
+.asset-list-row > p { grid-column:1; grid-row:3; margin:0; color:var(--ux-muted); font-size:13px; }
+.asset-row-stock { grid-column:2; grid-row:1 / span 3; min-width:0; }
+.asset-row-stock .asset-count { font-size:27px; margin:0 0 4px; }
+.asset-row-stock > p { margin:4px 0; color:var(--ux-muted); font-size:13px; }
+.asset-row-stock .asset-supply { padding:4px 0; border-bottom:0; font-size:13px; }
+.asset-row-stock .asset-supply .btn { min-height:36px; padding:6px 9px; font-size:12px; }
+.asset-row-stock .asset-supply + .asset-supply { border-top:1px solid var(--ux-stroke); }
+.asset-list-row > .asset-actions { grid-column:3; grid-row:1 / span 3; justify-content:flex-end; gap:6px; margin:0; }
+.asset-list-row .asset-actions .btn { min-height:36px; font-size:12px; padding:6px 10px; }
+.asset-list-row .asset-actions [data-action="register"] { border-color:var(--ux-text); font-weight:700; }
+.asset-empty .asset-reset { margin-top:10px; }
+@media(max-width:950px) {
+  .asset-discovery .asset-filters { grid-template-columns:2fr 1fr 1fr; }
+  .asset-discovery .asset-filters .btn { justify-self:start; }
+  .asset-list-row { grid-template-columns:minmax(160px,1.2fr) minmax(145px,1fr); }
+  .asset-list-row > .asset-actions { grid-column:1 / -1; grid-row:4; justify-content:flex-start; padding-top:8px; border-top:1px solid var(--ux-stroke); }
+}
+@media(max-width:650px) {
+  .asset-page-header { align-items:flex-start; }
+  .asset-header-actions { width:100%; }
+  .asset-header-actions .btn { flex:1 1 auto; }
+  .asset-discovery { padding:12px; }
+  .asset-discovery .asset-filters { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
+  .asset-discovery .asset-filters .asset-search { grid-column:1 / -1; }
+  .asset-view-filters { flex-wrap:nowrap; overflow-x:auto; padding-bottom:6px; scrollbar-width:thin; }
+  .asset-view-button { flex:none; white-space:nowrap; }
+  .asset-list-row { grid-template-columns:minmax(0,1fr); gap:10px; }
+  .asset-list-row > .asset-tag { grid-column:1;grid-row:1; }
+  .asset-list-row > h2 { grid-column:1;grid-row:2; }
+  .asset-list-row > p { grid-column:1;grid-row:3; }
+  .asset-row-stock { grid-column:1;grid-row:4; }
+  .asset-list-row > .asset-actions { grid-column:1;grid-row:5; justify-content:flex-start; }
+  .asset-result-summary { margin:10px 1px; }
+}
