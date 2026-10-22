@@ -364,7 +364,7 @@ def process_job(db, job, at, transport=None):
                 raise DeliveryError('验证已完成或过期', 'skipped')
             code = verification_code(member['generation'])
             message['Subject'] = '巡天御风｜邮箱验证码'
-            text = f'您的邮箱验证码是：{code}\n请在网站的个人账户页面输入验证码，30 分钟内有效。请勿转发给他人。\n验证后每天北京时间 08:00 接收个人任务早报、22:00 接收团队项目晚报（包含周末）；仅收录进行中、阻塞或未开始但已逾期的事项，无符合提醒条件的事项时跳过对应日报。如非本人操作请忽略。'
+            text = f'您的邮箱验证码是：{code}\n请在网站的个人账户页面输入验证码，30 分钟内有效。请勿转发给他人。\n验证后可在个人账户中设置个人、团队及倒计时邮件的提醒频率；无符合提醒条件的事项时将跳过汇总邮件。如非本人操作请忽略。'
             markup = render_verification_html(code)
         else:
             if not member['verified'] or member['paused']:
