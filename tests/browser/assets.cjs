@@ -58,11 +58,11 @@ async function main(){
     await page.locator('#asset-create').click();await page.locator('#asset-add-manual').click();
     await page.locator('#asset-form [name=name]').fill('测试电机 '+label);
     await page.locator('#asset-form [name=specification]').fill('3508 <测试>');
+    await page.locator('#asset-form [name=returnable_mode]').selectOption('quantity');
     await page.locator('#asset-save').click();await page.locator('#asset-dialog').waitFor({state:'hidden'});
     // This suite retains the pre-migration quantity/loan contract. New unit behavior
     // is tested separately in assets_serialized; only this disposable DB is seeded.
     const legacy=(await(await api.get('/api/assets/items?q='+encodeURIComponent('测试电机 '+label))).json()).items[0];
-    execFileSync(process.env.REVIEW_PYTHON||'python',['-c',"import pathlib,sqlite3,sys; p=pathlib.Path(sys.argv[1]); assert p.name=='data.db' and p.parent.name.startswith('xtyf-browser-review-'); db=sqlite3.connect(p); db.execute(\"UPDATE asset_items SET tracking='legacy' WHERE id=?\",(int(sys.argv[2]),)); db.commit(); db.close()",path.join(fixtureRoot,'data.db'),String(legacy.id)]);
     await page.reload();await page.locator('#asset-status').filter({hasText:'数据已更新'}).waitFor();
     await page.getByRole('link',{name:'测试电机 '+label,exact:true}).click();
     await page.locator('#asset-status').filter({hasText:'数据已更新'}).waitFor();
