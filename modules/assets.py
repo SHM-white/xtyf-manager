@@ -552,8 +552,34 @@ def items():
                                      stock_version=balances.get((item["id"], c["id"]), {}).get("version", 0))
                                 for c in campuses if not campus or str(c["id"]) == campus]
         values.append(item)
+    # Classify after campus/search/category filtering but before page slicing:
+    # counts and pagination must never be computed from only one page of cards.
+    def needs_attention(item):
+        if not item["active"]:
+            return False
+        if item["tracking"] == "status":
+            return any(c["supply_status"] == "low" for c in item["supplies"])
+        return item["kind"] == "consumable" and item["available"] == 0
+
+    summary = {"all": len(values), "equipment": 0, "quantity": 0, "supply": 0, "attention": 0}
+    for item in values:
+        group = ("equipment" if item["kind"] == "returnable" else
+                 "supply" if item["tracking"] == "status" else "quantity")
+        summary[group] += 1
+        if needs_attention(item):
+            summary["attention"] += 1
+    view = request.args.get("view", "all")
+    if view == "equipment":
+        values = [item for item in values if item["kind"] == "returnable"]
+    elif view == "quantity":
+        values = [item for item in values if item["kind"] == "consumable" and item["tracking"] != "status"]
+    elif view == "supply":
+        values = [item for item in values if item["kind"] == "consumable" and item["tracking"] == "status"]
+    elif view == "attention":
+        values = [item for item in values if needs_attention(item)]
     page_number = paging()
     return jsonify(ok=True, items=values[(page_number-1)*20:page_number*20], total=len(values), page=page_number,
+                   summary=summary,
                    categories=[r[0] for r in db.execute("SELECT DISTINCT category FROM asset_items WHERE category<>'' ORDER BY category")])
 
 
