@@ -60,6 +60,7 @@ def main(argv: list[str]) -> int:
 
     # unittest discover -s tests imports each file by its module basename.
     # Load only this shard's modules to avoid executing other shards' tests.
+    sys.path.insert(0, str(TESTS_DIR.parent))
     sys.path.insert(0, str(TESTS_DIR))
     loader = unittest.TestLoader()
     suite = unittest.TestSuite(loader.loadTestsFromName(path.stem) for path in selected)
