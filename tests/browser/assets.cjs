@@ -146,8 +146,10 @@ async function main(){
     await supplyCard.locator('.asset-count').filter({hasText:'5'}).waitFor();
     await page.locator('#asset-filter [name=campus_id]').selectOption(String(campus));
     await supplyCard.locator('.asset-count').filter({hasText:'10'}).waitFor();
-    // The card surface, not just its button, opens registration. The title remains a detail link.
+    // A stock-value tap must not open a destructive operation; use an explicit action.
     await supplyCard.locator('.asset-count').click();
+    assert.equal(await page.locator('#asset-dialog').isVisible(),false);
+    await supplyCard.locator('[data-action=register]').click();
     assert.equal(await page.locator('#asset-form [name=campus_id]').inputValue(),String(campus));
     await page.getByLabel('数量',{exact:true}).fill('2');
     await page.getByLabel('登记时间（北京时间）',{exact:true}).fill('2026-01-01T09:30');
