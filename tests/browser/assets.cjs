@@ -125,6 +125,7 @@ async function main(){
     await page.locator('#asset-create').click();await page.locator('#asset-add-manual').click();await page.getByLabel('名称',{exact:true}).fill('自助耗材 '+label);
     await page.locator('#asset-form [name=category]').selectOption('登记分类 '+label);
     await page.locator('#asset-form [name=kind]').selectOption('consumable');
+    await page.locator('#asset-form [name=consumable_mode]').selectOption('quantity');
     await page.locator('#asset-save').click();await page.locator('#asset-dialog').waitFor({state:'hidden'});
     await page.getByRole('link',{name:'自助耗材 '+label,exact:true}).waitFor();
     const supply=(await (await api.get('/api/assets/items?q='+encodeURIComponent('自助耗材 '+label))).json()).items[0];

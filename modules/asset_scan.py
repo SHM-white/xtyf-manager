@@ -153,6 +153,8 @@ def resolve():
 def identify(db, data):
     require_manager()
     item = row(db, "asset_items", integer(data, "item_id"))
+    if item["tracking"] == "status":
+        raise Invalid("嘉立创物料继续按数量管理，请选择数量物料", 409)
     code = text(data, "code").upper()
     if not item["active"] or not re.fullmatch(r"C[1-9][0-9]{0,17}", code):
         raise Invalid("请选择启用物料并填写有效 C 编号")
@@ -199,6 +201,8 @@ def receive_one(db, data):
         raise Invalid("此入口只接受采购包装标签")
     item_id, campus_id, quantity = (integer(data, k) for k in ("item_id", "campus_id", "quantity"))
     item, campus = row(db, "asset_items", item_id), row(db, "asset_campuses", campus_id)
+    if item["tracking"] == "status":
+        raise Invalid("此耗材只标记充足／不足，无需扫码登记数量", 409)
     if not item["active"] or not campus["active"]:
         raise Invalid("物品或校区已停用", 409)
     mapped = db.execute(

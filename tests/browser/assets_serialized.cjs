@@ -80,6 +80,20 @@ async function main(){
     }
     await page.locator('#asset-create').click();await page.locator('#asset-scan').click();await page.locator('#asset-scan-raw').fill('{pc:C999999,qty:bad}');await page.locator('#asset-scan-raw').press('Enter');await page.locator('#scan-create').click();
     assert.equal(await page.getByLabel('实收数量',{exact:true}).inputValue(),'');await page.locator('#asset-close').click();
+    await page.locator('#asset-create').click();await page.locator('#asset-add-manual').click();
+    await page.getByLabel('名称',{exact:true}).fill('自由取用螺丝 '+label);
+    await page.locator('#asset-form [name=kind]').selectOption('consumable');
+    assert.equal(await page.locator('#asset-form [name=consumable_mode]').inputValue(),'status');
+    await page.locator('#asset-save').click();await page.locator('#asset-dialog').waitFor({state:'hidden'});
+    const screwCard=page.locator('.asset-card').filter({has:page.getByRole('link',{name:'自由取用螺丝 '+label,exact:true})});
+    assert.equal(await screwCard.locator('[data-action=register], [data-action=quantity], .asset-count').count(),0);
+    const sufficient=screwCard.locator(`[data-supply-item][data-campus="${campus}"]`);
+    await sufficient.click();await sufficient.filter({hasText:'标记不足'}).waitFor();
+    assert.equal(await page.locator('dialog[open]').count(),0);
+    let statusLost=true;await page.route('**/api/assets/supply-status',async r=>{if(statusLost){statusLost=false;await r.fetch();await r.abort();}else await r.continue();});
+    await sufficient.click();await page.locator('#asset-pending-retry').waitFor();await page.locator('#asset-pending-retry').click();
+    await page.locator('#asset-save').click();await page.locator('#asset-dialog').waitFor({state:'hidden'});await page.unroute('**/api/assets/supply-status');
+    await sufficient.filter({hasText:'补齐了，标记充足'}).waitFor();
     await page.locator('#asset-objects').click();await page.getByRole('button',{name:'新增使用对象',exact:true}).click();await page.getByLabel('名称',{exact:true}).fill('合成机器人 '+label);await page.getByLabel('原因（必填）',{exact:true}).fill('合成建档');await page.locator('#asset-save').click();await page.locator('#asset-dialog').waitFor({state:'hidden'});await page.getByRole('heading',{name:'合成机器人 '+label,exact:true}).waitFor();await page.locator('#asset-lifecycle-close').click();
     await page.locator('#asset-takes').click();await page.getByRole('button',{name:'开始盘点',exact:true}).click();await page.locator(`#asset-form [name=items][value="${item.id}"]`).check();await page.locator('#asset-form [name=campus_id]').selectOption(String(campus));await page.getByLabel('原因（必填）',{exact:true}).fill('合成盘点');await page.locator('#asset-save').click();await page.locator('#asset-dialog').waitFor({state:'hidden'});await page.getByRole('button',{name:'查看盘点',exact:true}).first().click();await page.getByRole('button',{name:'核对差异并解冻',exact:true}).click();await page.getByLabel('原因（必填）',{exact:true}).fill('未扫描只记待核实');await page.locator('#asset-save').click();await page.locator('#asset-dialog').waitFor({state:'hidden'});await page.locator('#asset-take-detail h4').filter({hasText:'closed'}).waitFor();await page.locator('#asset-lifecycle-close').click();
     await page.getByRole('link',{name:'我的借用',exact:true}).click();
