@@ -391,7 +391,9 @@ def process_job(db, job, at, transport=None):
                 target, days = countdown
                 title = html_escape(target['title'])
                 url = html_escape(settings()['base_url'] + '/', quote=True)
-                text = f'首页目标倒计时：{target["title"]}\\n目标日期：{target["target_date"]}\\n距离目标还有 {days} 天\\n{settings()["base_url"]}/dashboard'
+                text = (f'首页目标倒计时：{target["title"]}\\n'
+                        f'目标日期：{target["target_date"]}\\n'
+                        f'距离目标还有 {days} 天\\n{settings()["base_url"]}/')
                 markup = (f'<html><body><h2>首页目标倒计时</h2><p>{title}</p>'
                           f'<p>目标日期：{target["target_date"]} · 剩余 {days} 天</p>'
                           f'<p><a href="{url}">查看工作台</a></p></body></html>')
