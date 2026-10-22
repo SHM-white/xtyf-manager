@@ -11,13 +11,13 @@ class AssetsPR52Test(unittest.TestCase):
     post = fixture.AssetsTest.post
     save = fixture.AssetsTest.save
 
-    def item(self, identity):
+    def item_record(self, identity):
         response = self.member.get(f"/api/assets/items/{identity}")
         self.assertEqual(response.status_code, 200)
         return response.get_json()["item"]
 
     def edit(self, identity, status=200, **fields):
-        before = self.item(identity)
+        before = self.item_record(identity)
         return self.post(self.admin, "/api/assets/catalog/items", {
             "id": identity, "version": before["version"],
             "name": before["name"], "specification": before["specification"],
@@ -77,7 +77,7 @@ class AssetsPR52Test(unittest.TestCase):
             "name": "PR52按数量借还工具", "kind": "returnable",
             "unit": "台", "returnable_mode": "quantity",
         })
-        self.assertEqual(self.item(identity)["tracking"], "quantity")
+        self.assertEqual(self.item_record(identity)["tracking"], "quantity")
         self.post(self.admin, "/api/assets/operations", {
             "action": "receive", "item_id": identity, "campus_id": self.campus,
             "quantity": 3, "reason": "合成入库",
@@ -94,20 +94,20 @@ class AssetsPR52Test(unittest.TestCase):
 
         def migrate(action, status=200, **extra):
             return self.post(self.admin, "/api/assets/units/migrate", {
-                "item_id": identity, "version": self.item(identity)["version"],
+                "item_id": identity, "version": self.item_record(identity)["version"],
                 "action": action, "reason": "合成逐件核对", **extra,
             }, status)
 
         migrate("start")
-        self.assertEqual(self.item(identity)["tracking"], "migrating")
+        self.assertEqual(self.item_record(identity)["tracking"], "migrating")
         self.edit(identity, status=409, returnable_mode="quantity")
         migrate("cancel")
-        self.assertEqual(self.item(identity)["tracking"], "quantity")
+        self.assertEqual(self.item_record(identity)["tracking"], "quantity")
         migrate("start")
         migrate("add", campus_id=self.campus, quantity=3)
         finished = migrate("finish")
         self.assertEqual(len(finished["unit_ids"]), 3)
-        self.assertEqual(self.item(identity)["tracking"], "unit")
+        self.assertEqual(self.item_record(identity)["tracking"], "unit")
         self.assertEqual(self.member.get(f"/api/assets/units?item_id={identity}").get_json()["total"], 3)
         self.edit(identity, status=409, returnable_mode="quantity")
         migrate("start", status=409)
@@ -122,9 +122,9 @@ class AssetsPR52Test(unittest.TestCase):
             "returnable_mode": "quantity",
         }, 400)
         identity = self.save("items", {"name": "PR52默认单件设备", "kind": "returnable", "unit": "台"})
-        self.assertEqual(self.item(identity)["tracking"], "unit")
+        self.assertEqual(self.item_record(identity)["tracking"], "unit")
         self.edit(identity, status=409, returnable_mode="quantity")
-        self.assertEqual(self.item(identity)["tracking"], "unit")
+        self.assertEqual(self.item_record(identity)["tracking"], "unit")
 
     def test_package_create_receive_keeps_returnable_quantity_tracking(self):
         raw = "{on:PR52-ORDER,pc:C87654,pm:PR52-TOOL,qty:2}"
@@ -137,7 +137,7 @@ class AssetsPR52Test(unittest.TestCase):
         self.post(self.member, "/api/assets/scan/create-receive", body, 403)
         response = self.post(self.admin, "/api/assets/scan/create-receive", body)
         identity = response["item_id"]
-        self.assertEqual(self.item(identity)["tracking"], "quantity")
+        self.assertEqual(self.item_record(identity)["tracking"], "quantity")
         stock = self.member.get(f"/api/assets/items/{identity}").get_json()["campuses"]
         self.assertEqual(next(row["available"] for row in stock if row["id"] == self.campus), 2)
         self.assertEqual(self.member.get(f"/api/assets/units?item_id={identity}").get_json()["total"], 0)
