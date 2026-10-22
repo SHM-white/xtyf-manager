@@ -1,31 +1,55 @@
 {% extends "base.html" %}
-{% block title %}资产管理{% endblock %}
+{% block title %}物料管理{% endblock %}
 {% block content %}
 <section class="asset-workspace" aria-labelledby="asset-title">
-  <header class="asset-heading">
-    <div><p class="asset-eyebrow">团队资源 / INVENTORY</p><h1 id="asset-title">资产管理</h1><p class="asset-muted">按型号统计，按校区存放。每一次借还与领用都有记录。</p></div>
-    <button class="btn" id="asset-refresh" type="button">刷新数据</button>
+  <header class="asset-heading asset-page-header">
+    <div>
+      <p class="asset-eyebrow">团队资源 / INVENTORY</p>
+      <a id="asset-back" href="/assets" class="asset-back" hidden>← 返回物料列表</a>
+      <h1 id="asset-title">物料管理</h1>
+      <p class="asset-muted">先找物料，再看库存和位置；借还、领用、补货各走最短流程。</p>
+    </div>
+    <div class="asset-header-actions">
+      <button class="btn" id="asset-refresh" type="button">刷新</button>
+      <button class="btn primary" id="asset-create" type="button" hidden>新增物品 / 扫码入库</button>
+    </div>
   </header>
-  <nav class="asset-tabs" aria-label="资产导航">
-    <a class="btn" href="/assets">全部物品</a><a class="btn" href="/assets?view=mine">我的借用</a>
-    <button class="btn" id="asset-objects" type="button" hidden>使用对象</button><button class="btn" id="asset-takes" type="button" hidden>单件盘点</button>
+  <nav class="asset-tabs asset-main-nav" aria-label="物料管理主导航">
+    <a class="asset-main-link" data-asset-nav="all" href="/assets">物料仓库</a>
+    <a class="asset-main-link" data-asset-nav="mine" href="/assets?view=mine">我的借用</a>
+  </nav>
+  <div id="asset-admin-tools" class="asset-admin-tools" hidden>
+    <span class="asset-tools-label">管理工具</span>
+    <button class="btn" id="asset-objects" type="button" hidden>使用对象</button>
+    <button class="btn" id="asset-takes" type="button" hidden>单件盘点</button>
     <button class="btn" id="asset-campuses" type="button" hidden>校区管理</button>
     <button class="btn" id="asset-categories" type="button" hidden>类别管理</button>
-    <button class="btn primary" id="asset-create" type="button" hidden>新增物品</button>
-  </nav>
+  </div>
   <p id="asset-status" role="status" aria-live="polite" tabindex="-1"></p>
   <div id="asset-pending" class="asset-pending" role="alert" hidden>
     <span id="asset-pending-message"></span>
     <button class="btn" id="asset-pending-retry" type="button">重试上次提交</button>
   </div>
-  <form id="asset-filter" class="asset-filters">
-    <label>名称或规格<input name="q" type="search" maxlength="120" placeholder="例如：M3 螺丝、3508 电机"></label>
-    <label>校区<select name="campus_id"><option value="">全部校区</option></select></label>
-    <label>类别<select name="category"><option value="">全部类别</option></select></label>
-    <button class="btn" type="submit">筛选</button>
-  </form>
+  <div class="asset-discovery">
+    <form id="asset-filter" class="asset-filters" role="search">
+      <label class="asset-search">搜索物料<input name="q" type="search" maxlength="120" placeholder="物料名称、型号或规格，例如 M3508 / M3×8"></label>
+      <label>校区<select name="campus_id"><option value="">全部校区</option></select></label>
+      <label>类别<select name="category"><option value="">全部类别</option></select></label>
+      <button class="btn" type="submit">查找</button>
+      <button class="btn asset-reset" id="asset-filter-reset" type="button">清空筛选</button>
+    </form>
+    <nav id="asset-view-filters" class="asset-view-filters" aria-label="按物料使用方式筛选">
+      <button type="button" class="asset-view-button" data-asset-view="all" aria-pressed="true">全部 <span class="asset-view-count" aria-label="种类数">–</span></button>
+      <button type="button" class="asset-view-button" data-asset-view="equipment" aria-pressed="false">设备 / 工具 <span class="asset-view-count">–</span></button>
+      <button type="button" class="asset-view-button" data-asset-view="quantity" aria-pressed="false">元件 / 数量耗材 <span class="asset-view-count">–</span></button>
+      <button type="button" class="asset-view-button" data-asset-view="supply" aria-pressed="false">螺丝等自由取用 <span class="asset-view-count">–</span></button>
+      <button type="button" class="asset-view-button" data-asset-view="attention" aria-pressed="false">需要补货 <span class="asset-view-count">–</span></button>
+    </nav>
+  </div>
+  <p id="asset-result-summary" class="asset-result-summary" aria-live="polite"></p>
   <div id="asset-content" aria-busy="true"></div>
   <section id="asset-mine-units" class="asset-section asset-unit-drawer" aria-labelledby="asset-unit-title" hidden></section>
+</section>
 </section>
 <dialog id="asset-add-dialog" class="asset-dialog" aria-labelledby="asset-add-title">
   <header class="asset-heading"><h2 id="asset-add-title">新增物品</h2><button class="btn" id="asset-add-close" type="button">取消</button></header>
