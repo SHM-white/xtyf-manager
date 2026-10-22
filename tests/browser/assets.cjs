@@ -166,6 +166,7 @@ async function main(){
     await page.locator('#asset-save').click();await page.locator('#asset-dialog').waitFor({state:'hidden'});
     await supplyCard.locator('.asset-count').filter({hasText:'12'}).waitFor();
     await supplyCard.getByRole('link',{name:'自助耗材 '+label,exact:true}).click();
+    await page.locator('[data-asset-detail-view=history]').click();
     await page.getByText('登记时间：2026-01-01 09:30:00（北京时间）',{exact:true}).waitFor();
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true);
     await page.screenshot({path:path.join(output,label+'-registration.png'),fullPage:true});
