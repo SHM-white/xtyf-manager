@@ -72,9 +72,9 @@ async function main(){
     await page.locator('#asset-form [name=quantity]').fill('10');await page.locator('#asset-form [name=reason]').fill('合成入库');
     await page.locator('#asset-save').click();await page.locator('#asset-dialog').waitFor({state:'hidden'});
     await eastCard.getByText('总量 · 在库 10 / 借出 0',{exact:true}).waitFor();
-    await eastCard.getByRole('button',{name:'借用',exact:true}).click();await page.locator('#asset-form [name=quantity]').fill('3');
+    await eastCard.getByRole('button',{name:'登记借用',exact:true}).click();await page.locator('#asset-form [name=quantity]').fill('3');
     await page.locator('#asset-close').click();assert.equal((await (await api.get(`/api/assets/items/${id}`)).json()).campuses.find(c=>c.id===campus).available,10);
-    await eastCard.getByRole('button',{name:'借用',exact:true}).click();await page.locator('#asset-form [name=quantity]').fill('3');
+    await eastCard.getByRole('button',{name:'登记借用',exact:true}).click();await page.locator('#asset-form [name=quantity]').fill('3');
     // A committed response is lost: retry must return the existing result.
     await page.getByLabel('用途／备注（必填）',{exact:true}).fill('合成借用验证');
     let lost=true;
@@ -209,7 +209,7 @@ async function main(){
     await frame.getByRole('link',{name:'测试电机 chromium',exact:true}).click();
     await frame.locator('#asset-status').filter({hasText:'数据已更新'}).waitFor();
     const east=frame.locator('.asset-card').filter({has:frame.getByRole('heading',{name:'合成东校区',exact:true})});
-    await east.getByRole('button',{name:'借用',exact:true}).click();
+    await east.getByRole('button',{name:'登记借用',exact:true}).click();
     await frame.getByLabel('用途／备注（必填）',{exact:true}).fill('合成本地客户端借用');
     state.offline=true;await frame.locator('#asset-save').click();
     await frame.locator('#asset-form-status').filter({hasText:'结果尚未确认'}).waitFor();
