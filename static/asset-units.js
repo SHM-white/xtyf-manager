@@ -161,6 +161,9 @@
   $('asset-unit-close').onclick=()=>drawer.close();
   $('asset-unit-campus').onchange=()=>{page=1;refresh();};
   document.addEventListener('click',e=>{const a=e.target.closest('[data-unit-model]');if(a){e.preventDefault();show(Number(a.dataset.unitModel)).catch(e=>status(e.message));}});
+  // Saving through a nested modal may finish loading before its parent drawer reopens.
+  // Refresh on resume as well, so newly received units are always displayed.
+  drawer.addEventListener('asset-dialog-resumed',()=>{if(!embedded)refresh();});
   document.addEventListener('assets-loaded',()=>{if(!embedded&&drawer.open)refresh();});
   document.addEventListener('asset-operation-saved',e=>{
     if(e.detail.path==='units/operate'){
