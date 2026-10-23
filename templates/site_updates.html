@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}更新日志{% endblock %}
+{% block content %}
+<div class="ux-page-head">
+  <div><p class="ux-eyebrow">WORKSPACE / CHANGELOG</p><h1>更新日志</h1>
+    <p>按时间浏览网站已打包的 Git Commit 记录。信息在构建时缓存，页面无需连接 GitHub。</p></div>
+</div>
+{% if release %}
+<section class="release-summary" aria-label="当前网站版本">
+  <div><span class="release-eyebrow">当前部署版本</span><strong>{{ release.commit[:10] }}</strong>
+    <p>收录最近 {{ release.commits | length }} 条提交记录（最多 200 条）</p></div>
+  <div><span class="release-eyebrow">打包时间（UTC）</span><time datetime="{{ release.built_at }}">{{ release.built_at[:19] | replace('T', ' ') if release.built_at else '未知' }}</time></div>
+</section>
+{% if groups %}
+<div class="release-timeline" aria-label="提交历史时间轴">
+  {% for group in groups %}
+  <section class="release-day" aria-labelledby="release-day-{{ loop.index }}">
+    <h2 id="release-day-{{ loop.index }}">{{ group.date }}</h2>
+    <ol class="release-entries">
+      {% for entry in group.entries %}
+      <li class="release-entry">
+        <span class="release-dot" aria-hidden="true"></span>
+        <div class="release-entry-body">
+          <div class="release-entry-meta"><time datetime="{{ entry.date }}">{{ entry.date[11:16] }}</time><span>{{ entry.author }}</span></div>
+          <p>{{ entry.subject or '未填写提交说明' }}</p>
+          <a href="https://github.com/SHM-white/xtyf-manager/commit/{{ entry.sha }}" target="_blank" rel="noopener noreferrer" aria-label="在 GitHub 查看提交 {{ entry.sha[:10] }}">{{ entry.sha[:10] }} ↗</a>
+        </div>
+      </li>
+      {% endfor %}
+    </ol>
+  </section>
+  {% endfor %}
+</div>
+{% else %}
+<p class="release-empty">当前版本没有可展示的提交记录。</p>
+{% endif %}
+{% else %}
+<div class="release-empty">当前部署尚未包含更新日志快照。使用新版 <code>deploy/package_release.py</code> 打包并完成服务器更新后，记录会自动显示在这里。</div>
+{% endif %}
+{% endblock %}
