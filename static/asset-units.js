@@ -158,6 +158,9 @@
   $('asset-unit-close').onclick=()=>drawer.close();
   $('asset-unit-campus').onchange=()=>{page=1;refresh();};
   document.addEventListener('click',e=>{const a=e.target.closest('[data-unit-model]');if(a){e.preventDefault();show(Number(a.dataset.unitModel)).catch(e=>status(e.message));}});
+  // The parent drawer is temporarily closed while a nested save form is open.
+  // Refresh it when the modal stack restores the drawer after receiving new units.
+  drawer.addEventListener('asset-dialog-resumed',()=>{if(!embedded)refresh();});
   document.addEventListener('assets-loaded',()=>{if(!embedded&&drawer.open)refresh();});
   document.addEventListener('asset-operation-saved',e=>{
     if(e.detail.path==='units/operate'){
