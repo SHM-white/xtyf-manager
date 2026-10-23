@@ -30,7 +30,7 @@ function setup(previous = '') {
   const summary = { textContent: '' };
   const document = {
     hidden: false,
-    querySelector: () => banner,
+    querySelector: selector => selector === '[data-site-update-banner]' ? banner : null,
     addEventListener: (name, fn) => { if (name === 'DOMContentLoaded') loaded = fn; else listeners[name] = fn; },
   };
   const window = {
@@ -69,4 +69,39 @@ test('previously acknowledged release stays hidden', async () => {
   app.change({ available: false, commit: null });
   await app.poll();
   assert.equal(app.banner.hidden, true);
+});
+
+test('timeline renders cached commit subject as text without HTML interpolation', async () => {
+  let loaded;
+  const node = (tag) => ({
+    tag, children: [], textContent: '', className: '', dataset: {},
+    append(...children) { this.children.push(...children); },
+    replaceChildren(...children) { this.children = children; },
+    setAttribute() {},
+  });
+  const root = node('div');
+  root.dataset.siteUpdateHistoryApi = '/api/site-release/history';
+  const document = {
+    querySelector: selector => selector === '[data-site-update-timeline]' ? root : null,
+    addEventListener(name, fn) { if (name === 'DOMContentLoaded') loaded = fn; },
+    createElement: node,
+  };
+  const subject = '<img src=x onerror=alert(1)>';
+  vm.runInNewContext(script, {
+    document,
+    window: {},
+    fetch: async () => ({ ok: true, json: async () => ({
+      available: true, commit: first, built_at: '2026-10-23T09:00:00Z',
+      commits: [{ sha: first, author: 'Tester', date: '2026-10-23T12:30:00+08:00', subject }],
+    }) }),
+  });
+  loaded();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(root.children.length, 2);
+  const allNodes = [];
+  const visit = current => { allNodes.push(current); current.children.forEach(visit); };
+  root.children.forEach(visit);
+  assert.equal(allNodes.find(x => x.tag === 'p' && x.textContent === subject).textContent, subject);
+  assert.equal(allNodes.find(x => x.tag === 'a').href,
+    'https://github.com/SHM-white/xtyf-manager/commit/' + first);
 });
