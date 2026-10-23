@@ -47,18 +47,26 @@ class SiteUpdatesTest(unittest.TestCase):
                 self.assertIn("no-store", resp.headers["Cache-Control"])
                 self.assertEqual(self.client.get("/updates").status_code, 200)
 
-    def test_timeline_escapes_commit_messages_and_links_to_commit(self):
+    def test_timeline_uses_authenticated_history_endpoint(self):
         self.save()
         resp = self.client.get("/updates")
         body = resp.get_data(as_text=True)
         self.assertEqual(resp.status_code, 200)
-        self.assertIn("&lt;script&gt;alert(1)&lt;/script&gt;", body)
-        self.assertNotIn("<script>alert(1)</script>", body)
-        self.assertIn("https://github.com/SHM-white/xtyf-manager/commit/" + "a" * 40, body)
-        self.assertIn("2026-10-23", body)
-        data = self.client.get("/api/site-release").get_json()
+        self.assertIn("data-site-update-timeline", body)
+        self.assertIn("/api/site-release/history", body)
+        self.assertIn('href="/updates"', body)
+        self.assertEqual(app_module.app.test_client().get("/api/site-release/history").status_code, 401)
+        history = self.client.get("/api/site-release/history")
+        self.assertIn("no-store", history.headers["Cache-Control"])
+        data = history.get_json()
         self.assertTrue(data["available"])
         self.assertEqual(data["commit"], "a" * 40)
+        self.assertEqual(data["commits"][0]["subject"], "feat: <script>alert(1)</script>")
+        # Commit text is safely inserted as text, not HTML, in both browsers and clients.
+        script = (Path(__file__).resolve().parents[1] / "static/site-updates.js").read_text(encoding="utf-8")
+        self.assertIn("node.textContent = value", script)
+        self.assertNotIn("innerHTML", script)
+
 
     def test_announcement_is_present_in_shared_shell(self):
         self.save()

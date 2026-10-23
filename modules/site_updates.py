@@ -1,6 +1,5 @@
-"""Authenticated server-release notice and read-only Git history timeline."""
+"""Authenticated server-release notice and read-only Git history endpoint."""
 import json
-from itertools import groupby
 from pathlib import Path
 import re
 
@@ -45,29 +44,33 @@ def load_snapshot():
             "commits": commits}
 
 
-@bp.route("/api/site-release")
-@login_required
-def version():
-    snapshot = load_snapshot()
-    response = jsonify(
-        available=bool(snapshot),
-        commit=snapshot["commit"] if snapshot else None,
-        built_at=snapshot["built_at"] if snapshot else None,
-        latest_subject=snapshot["commits"][0]["subject"] if snapshot and snapshot["commits"] else "",
-    )
+def no_cache(response):
     response.headers["Cache-Control"] = "private, no-store, max-age=0"
     response.headers["Vary"] = "Cookie"
     return response
 
 
+@bp.route("/api/site-release")
+@login_required
+def version():
+    snapshot = load_snapshot()
+    return no_cache(jsonify(
+        available=bool(snapshot),
+        commit=snapshot["commit"] if snapshot else None,
+        built_at=snapshot["built_at"] if snapshot else None,
+        latest_subject=snapshot["commits"][0]["subject"] if snapshot and snapshot["commits"] else "",
+    ))
+
+
+@bp.route("/api/site-release/history")
+@login_required
+def history():
+    """History stays on the server; native clients use the same authenticated API."""
+    snapshot = load_snapshot()
+    return no_cache(jsonify(available=bool(snapshot), **(snapshot or {})))
+
+
 @bp.route("/updates")
 @login_required
 def timeline():
-    snapshot = load_snapshot()
-    groups = []
-    if snapshot:
-        groups = [{"date": date, "entries": list(items)}
-                  for date, items in groupby(snapshot["commits"], key=lambda item: item["date"][:10])]
-    response = render_template("site_updates.html", me=current_user(), page="updates",
-                               role_names=ROLE_NAMES, release=snapshot, groups=groups)
-    return response
+    return render_template("site_updates.html", me=current_user(), page="updates", role_names=ROLE_NAMES)
