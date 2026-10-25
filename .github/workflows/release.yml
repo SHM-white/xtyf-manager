@@ -23,6 +23,8 @@ concurrency:
 jobs:
   resolve:
     name: Select immutable release identity
+    # Manual dispatch must never execute signed release code from an unreviewed branch.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     outputs:
       version: ${{steps.version.outputs.version}}
