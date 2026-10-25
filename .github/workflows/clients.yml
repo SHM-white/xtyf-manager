@@ -257,8 +257,14 @@ jobs:
           keytool -list -keystore clients/signing/xtyf-manager.jks -storepass:env XTYF_KEY_PASSWORD -alias xtyf-manager
 
       - name: Build and verify APK (temporary test or fixed stable key)
+        env:
+          SIGNED_ANDROID: ${{ inputs.signed_android }}
         run: |
-          python clients/build_android.py --jdk "$JAVA_HOME" --sdk "$ANDROID_HOME" --skip-frontend-build --output-dir dist/clients/android
+          args=()
+          if [[ "$SIGNED_ANDROID" != "true" ]]; then
+            args+=(--test-signing)
+          fi
+          python clients/build_android.py --jdk "$JAVA_HOME" --sdk "$ANDROID_HOME" --skip-frontend-build --output-dir dist/clients/android "${args[@]}"
           cd dist/clients/android
           test "$(find . -maxdepth 1 -type f -name 'XTYF-Manager-*.apk' | wc -l)" -eq 1
           sha256sum XTYF-Manager-*.apk > SHA256SUMS.txt

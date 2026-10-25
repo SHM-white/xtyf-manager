@@ -47,7 +47,7 @@ class ReleaseCollectionTests(unittest.TestCase):
         target.write_bytes(target.read_bytes() + b"tamper")
         with self.assertRaisesRegex(ValueError, "Checksum mismatch"):
             collect(self.artifacts, self.root / "out", version="1.1.0",
-                    tag="20261020-beta1", channel="prerelease")
+                    tag="v1.1.0", channel="stable")
 
     def test_missing_platform_rejected(self):
         import shutil
