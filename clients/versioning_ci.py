@@ -51,6 +51,10 @@ def main():
         intent=json.loads(marker.read_text(encoding="utf-8")) if marker.is_file() else {}
         stable=intent.get("version")==config["version"] and bool(STABLE.fullmatch(config["version"]))
         completed=False
+        sha=os.environ.get("GITHUB_SHA","")
+        repo=os.environ.get("GITHUB_REPOSITORY","")
+        if not re.fullmatch(r"[0-9a-f]{40}",sha) or not repo:
+            raise RuntimeError("Missing main source SHA / repository")
         if stable:
             # A stable release must be approved through a merged release/X.Y.Z PR.
             # Merely modifying release-intent.json on a regular main commit is not approval.
@@ -63,13 +67,14 @@ def main():
             stable=any(p.get("merged_at") and p.get("base",{}).get("ref")=="main"
                        and p.get("head",{}).get("ref")=="release/"+config["version"]
                        for p in prs)
-            proc=subprocess.run(["gh","release","view","v"+config["version"],"--json","assets","--jq",".assets | length"],capture_output=True,text=True)
-            if proc.returncode==0:
-                count=int(proc.stdout.strip())
-                if count not in (0,9):raise ValueError("Partial stable release: investigate before retrying")
-                completed=count==9
-            elif "release not found" not in proc.stderr.lower() and "404" not in proc.stderr:
-                raise RuntimeError(proc.stderr)
+            if stable:
+                proc=subprocess.run(["gh","release","view","v"+config["version"],"--json","assets","--jq",".assets | length"],capture_output=True,text=True)
+                if proc.returncode==0:
+                    count=int(proc.stdout.strip())
+                    if count not in (0,9):raise ValueError("Partial stable release: investigate before retrying")
+                    completed=count==9
+                elif "release not found" not in proc.stderr.lower() and "404" not in proc.stderr:
+                    raise RuntimeError(proc.stderr)
         if stable:
             if config["versionCode"]!=version_code(config["version"]):
                 raise ValueError("Stable Android versionCode mismatch")
