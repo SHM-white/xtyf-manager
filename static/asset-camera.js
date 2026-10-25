@@ -3,7 +3,7 @@
   'use strict';
   const $=id=>document.getElementById(id),host=$('asset-scan-camera'),scanner=window.AssetScan;
   let reader=null,stream=null,generation=0,last='',failed='',sound=true,audio=null,flashTimer=null,decodeTimer=null;
-  let scanSerial=0;
+  let scanSerial=0,hadLiveCamera=false;
   const recentLabels=new Map();
   // The camera only decodes; AssetScan owns asynchronous lookups and queue deduplication.
   // Bound memory and latch a stationary code until another label or an explicit rescan.
@@ -63,7 +63,7 @@
     $('asset-camera-feedback-message').textContent=detail.message;
     const frame=$('asset-camera-frame');clearTimeout(flashTimer);frame.dataset.feedback=detail.kind;
     flashTimer=setTimeout(()=>delete frame.dataset.feedback,750);
-    if(detail.audible){beep(detail.kind);try{if(['accepted','success'].includes(detail.kind)&&navigator.vibrate)navigator.vibrate(40);}catch(_){/* Haptics are optional. */}}
+    if(detail.audible&&(!hadLiveCamera||stream)){beep(detail.kind);try{if(['accepted','success'].includes(detail.kind)&&navigator.vibrate)navigator.vibrate(40);}catch(_){/* Haptics are optional. */}}
   });
   $('asset-camera-sound').onclick=()=>{sound=!sound;$('asset-camera-sound').textContent='提示音：'+(sound?'开':'关');$('asset-camera-sound').setAttribute('aria-pressed',String(sound));if(sound){prepareAudio();beep('success');}};
   function cameraUnavailable(){
@@ -176,7 +176,7 @@
       const videoConstraints={...cameraChoice,width:{ideal:1280},height:{ideal:720},frameRate:{ideal:15,max:24}};
       const openedStream=await navigator.mediaDevices.getUserMedia({audio:false,video:videoConstraints});
       if(own!==generation){openedStream.getTracks().forEach(t=>t.stop());return;}
-      stream=openedStream;
+      stream=openedStream;hadLiveCamera=true;
       const video=$('asset-camera-video');video.hidden=false;$('asset-camera-overlay').hidden=false;$('asset-camera-placeholder').hidden=true;$('asset-camera-stop').disabled=false;$('asset-camera-stop').hidden=false;$('asset-camera-start').hidden=true;
       $('asset-scan-dialog').classList.add('asset-scan-camera-active');
       video.srcObject=stream;
@@ -199,7 +199,7 @@
   $('asset-camera-device').onchange=()=>$('asset-camera-start').click();
   $('asset-camera-rescan').onclick=()=>{last='';recentLabels.clear();scanSerial++;status('已允许重新识别，请对准当前标签。');};
   function selectInput(mode){
-    stop();last='';
+    stop();if(mode==='gun')hadLiveCamera=false;
     for(const button of document.querySelectorAll('[data-scan-input]'))button.setAttribute('aria-pressed',String(button.dataset.scanInput===mode));
     host.hidden=mode==='gun';$('asset-scan-gun-settings').hidden=mode!=='gun';
     $('asset-camera-device-field').hidden=$('asset-camera-device').options.length<3;
