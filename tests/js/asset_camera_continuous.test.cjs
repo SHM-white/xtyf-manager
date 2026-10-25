@@ -93,8 +93,8 @@ test('camera decodes the next label while the previous network request is unreso
   assert.match(f.node('asset-camera-status').textContent,/可继续扫描|已收集|查询/);
   // Explicit retry allows rescanning a stationary label, regardless of lookup state.
   f.node('asset-camera-retry').onclick();
-  assert.deepEqual(pending.map(x=>x.text),['A','B','C','A']);
-  codes.push('A');f.fireTimer(260);
+  assert.deepEqual(pending.map(x=>x.text),['A','B','C','C']);
+  codes.push('C');f.fireTimer(260);
   assert.equal(pending.length,4,'retry must not cause the stationary label to enqueue twice');
   f.node('asset-camera-stop').onclick();
   pending[3].reject(Error('late failure'));
