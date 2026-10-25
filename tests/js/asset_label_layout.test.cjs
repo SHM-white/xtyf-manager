@@ -22,7 +22,7 @@ test('manual layout overrides automatic selection on any supported size',()=>{
   assert.equal(Layout.compute(30,30,'wide').mode,'wide');
   assert.throws(()=>Layout.compute(14,10),/15/);
   assert.throws(()=>Layout.compute(20,9),/10/);
-  assert.throws(()=>Layout.compute(50,30,'garbage'),/布局/);
+  assert.throws(()=>Layout.compute(50,30,'garbage'),/排版/);
 });
 test('the bounded-frame scan decoder can read a generated real QR image',()=>{
   const code='M:128',matrix=new z.QRCodeWriter().encode(code,z.BarcodeFormat.QR_CODE,192,192,new Map());
@@ -31,7 +31,7 @@ test('the bounded-frame scan decoder can read a generated real QR image',()=>{
     const i=4*(y*width+x),v=matrix.get(x,y)?0:255;
     pixels[i]=pixels[i+1]=pixels[i+2]=v;pixels[i+3]=255;
   }
-  const source=new z.RGBLuminanceSource(pixels,width,width);
+  const source=new z.RGBLuminanceSource(new Int32Array(pixels.buffer),width,width);
   const result=new z.MultiFormatReader().decode(new z.BinaryBitmap(new z.HybridBinarizer(source)));
   assert.equal(result.getText(),code);
 });

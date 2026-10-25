@@ -113,7 +113,7 @@
         if(frameCanvas.width!==width||frameCanvas.height!==height){frameCanvas.width=width;frameCanvas.height=height;}
         frameContext.drawImage(video,0,0,width,height);
         const pixels=frameContext.getImageData(0,0,width,height);
-        const luminance=new ZXing.RGBLuminanceSource(pixels.data,width,height);
+        const luminance=new ZXing.RGBLuminanceSource(new Int32Array(pixels.data.buffer,pixels.data.byteOffset,width*height),width,height);
         const bitmap=new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(luminance));
         const match=reader.decode(bitmap);
         if(match&&own===generation)void found(match.getText(),own);
