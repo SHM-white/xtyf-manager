@@ -12,9 +12,9 @@ from clients.release_target import validate_existing_release
 class ReleaseCollectionTests(unittest.TestCase):
     def test_tag_rules(self):
         validate_tag("v1.1.0", "stable", "1.1.0")
-        validate_tag("20261020-beta143", "prerelease", "1.1.0")
-        for tag, channel in (("v1.1.1", "stable"), ("20261345-beta1", "prerelease"),
-                             ("20261020-beta0", "prerelease"), ("v1.1.0", "prerelease")):
+        validate_tag("v1.2.0-beta.143", "prerelease", "1.2.0-beta.143")
+        for tag, channel in (("v1.1.1", "stable"), ("v1.2.0-beta.0", "prerelease"),
+                             ("v1.2.0-beta.1", "stable"), ("v1.1.0", "prerelease")):
             with self.subTest(tag=tag), self.assertRaises(ValueError):
                 validate_tag(tag, channel, "1.1.0")
 
