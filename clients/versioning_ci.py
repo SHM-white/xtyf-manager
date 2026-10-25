@@ -50,6 +50,7 @@ def main():
         marker=ROOT/".github/release-intent.json"
         intent=json.loads(marker.read_text(encoding="utf-8")) if marker.is_file() else {}
         stable=intent.get("version")==config["version"] and bool(STABLE.fullmatch(config["version"]))
+        completed=False
         if stable:
             # A stable release must be approved through a merged release/X.Y.Z PR.
             # Merely modifying release-intent.json on a regular main commit is not approval.
@@ -59,25 +60,47 @@ def main():
                 raise RuntimeError("Missing main commit identity for stable release")
             prs=json.loads(subprocess.check_output(
                 ["gh","api",f"repos/{repo}/commits/{sha}/pulls"],text=True))
-            if not any(p.get("merged_at") and p.get("base",{}).get("ref")=="main"
+            stable=any(p.get("merged_at") and p.get("base",{}).get("ref")=="main"
                        and p.get("head",{}).get("ref")=="release/"+config["version"]
-                       for p in prs):
-                raise RuntimeError("Stable release requires the merged release/<version> PR")
+                       for p in prs)
             proc=subprocess.run(["gh","release","view","v"+config["version"],"--json","assets","--jq",".assets | length"],capture_output=True,text=True)
             if proc.returncode==0:
                 count=int(proc.stdout.strip())
                 if count not in (0,9):raise ValueError("Partial stable release: investigate before retrying")
-                stable=count==0
+                completed=count==9
             elif "release not found" not in proc.stderr.lower() and "404" not in proc.stderr:
                 raise RuntimeError(proc.stderr)
         if stable:
+            if config["versionCode"]!=version_code(config["version"]):
+                raise ValueError("Stable Android versionCode mismatch")
             version=config["version"]
         else:
             if tuple(map(int,target.split(".")))<=tuple(map(int,config["version"].split("."))):
                 raise ValueError("Next beta target must exceed current stable")
             refs=subprocess.check_output(["git","ls-remote","--tags","--refs","origin","refs/tags/v"+target+"-beta.*"],text=True)
-            version=target+"-beta."+str(parse_refs(refs,target)+1)
-        vals={"version":version,"tag":"v"+version,"channel":"stable" if stable else "prerelease","code":str(version_code(version))}
+            prefix="refs/tags/v"+target+"-beta."
+            same=[]
+            for line in refs.splitlines():
+                fields=line.split()
+                if len(fields)==2 and fields[0]==sha and fields[1].startswith(prefix):
+                    suffix=fields[1][len(prefix):]
+                    if re.fullmatch(r"[1-9]\d*",suffix):same.append(int(suffix))
+            # An Actions rerun reuses the tag associated with this exact source.
+            number=min(same) if same else parse_refs(refs,target)+1
+            version=target+"-beta."+str(number)
+            tag="v"+version
+            proc=subprocess.run(["gh","release","view",tag,"--json","assets,isPrerelease,isDraft",
+                                 "--jq",'{count:(.assets|length),draft:.isDraft,prerelease:.isPrerelease}'],
+                                capture_output=True,text=True)
+            if proc.returncode==0:
+                state=json.loads(proc.stdout)
+                if state["draft"] or not state["prerelease"] or state["count"] not in (0,9):
+                    raise ValueError("Existing beta release cannot be safely reused")
+                completed=state["count"]==9
+                if not same:raise ValueError("Beta tag belongs to a different source commit")
+            elif "release not found" not in proc.stderr.lower() and "404" not in proc.stderr:
+                raise RuntimeError(proc.stderr)
+        vals={"version":version,"tag":"v"+version,"channel":"stable" if stable else "prerelease","code":str(version_code(version)),"already_published":str(completed).lower()}
         output=Path(args.output or os.environ["GITHUB_OUTPUT"])
         with output.open("a",encoding="utf-8") as file:
             for name,value in vals.items():file.write(f"{name}={value}\n")

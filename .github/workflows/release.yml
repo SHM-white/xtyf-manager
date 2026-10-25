@@ -29,6 +29,7 @@ jobs:
       tag: ${{steps.version.outputs.tag}}
       channel: ${{steps.version.outputs.channel}}
       code: ${{steps.version.outputs.code}}
+      already_published: ${{steps.version.outputs.already_published}}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -46,6 +47,7 @@ jobs:
   build:
     name: Test and build signed client packages
     needs: resolve
+    if: needs.resolve.outputs.already_published != 'true'
     uses: ./.github/workflows/clients.yml
     with:
       source_ref: ${{github.sha}}
@@ -59,6 +61,7 @@ jobs:
   publish:
     name: Verify and upload Release
     needs: [resolve, build]
+    if: needs.resolve.outputs.already_published != 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
