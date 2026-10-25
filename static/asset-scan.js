@@ -102,14 +102,14 @@
   }
   function collectReceipt(raw){
     raw=typeof raw==='string'?raw.trim():'';
-    if(!raw||raw.length>4096){status('标签内容为空或过长');feedback('error','未加入清单','请重新扫描有效包装标签',true);return false;}
-    if([...packages.values()].some(v=>v.parsed.raw===raw)){status('同一标签已在清单中，不重复累计数量；确为另一物品可从清单选择“新增重码条目”。');feedback('duplicate','已扫描过','此标签已在清单中，未重复增加',true);return false;}
-    if(currentPackages().length>=20){status('每批最多 20 个包装，请先核对入库。');feedback('attention','本批已满 20 个','请先核对整批入库',true);return false;}
+    if(!raw||raw.length>4096){status('标签内容为空或过长');feedback('error','未加入清单','请重新扫描有效包装标签',true);return {status:'failure',message:'标签内容为空或过长'};}
+    if([...packages.values()].some(v=>v.parsed.raw===raw)){status('同一标签已在清单中，不重复累计数量；确为另一物品可从清单选择“新增重码条目”。');feedback('duplicate','已扫描过','此标签已在清单中，未重复增加',true);return {status:'duplicate'};}
+    if(currentPackages().length>=20){status('每批最多 20 个包装，请先核对入库。');feedback('attention','本批已满 20 个','请先核对整批入库',true);return {status:'failure',message:'每批最多 20 个包装'};}
     const key='scan-'+(++nextEntry),entry={key,parsed:{raw},item:null,state:'loading',scopeItemId:Number(context.itemId)||null,campusId:context.campusId||''};
     packages.set(key,entry);$('asset-scan-raw').value='';
-    refreshReceipt(entry);status(`已收集 ${currentPackages().length} 个标签，可继续扫描；查询结果会更新到清单。`);
-    feedback('accepted','已读到标签','已加入清单，正在查询资料；请继续扫描',true);
-    return true;
+    const lookup=refreshReceipt(entry);status(`已收集 ${currentPackages().length} 个标签，可继续扫描；查询结果会更新到清单。`);
+    feedback('loading','正在识别标签','已保留标签，等待查询结果');
+    return lookup;
   }
   const currentUnits=()=>{
     const key=task+':'+(task==='count'?context.takeId||'':context.itemId||'');
@@ -223,7 +223,7 @@
     if(task==='receive')return collectReceipt(raw);
     const own=++sequence;resolved=null;$('asset-scan-preview').replaceChildren();status('正在识别标签并查询资料…');
     try{
-      const value=await core.api('scan/resolve',{raw});if(own!==sequence)return false;
+      const value=await lookup(raw,'general');if(own!==sequence)return {status:'stale'};
       resolved=value;renderResult(value);queue();
       let message=value.parsed.quantity_error||'已识别，库存尚未改变。';
       if(context.itemId&&value.item&&Number(context.itemId)!==value.item.id)message='扫描结果不是当前物料，请核对标签后重扫。';
@@ -231,8 +231,8 @@
         if(task==='count'&&!context.takeId)message='已找到实物。请选择盘点任务，再扫描加入该任务。';
         else message=addUnit(value);
       }
-      status(message);$('asset-scan-raw').value='';feedback('success',value.item?.name||value.supplier_lookup?.product?.name||value.parsed.code||'识别成功',message,true);return true;
-    }catch(error){if(own===sequence){status(error.message);feedback('error','识别未完成',error.message,true);}return false;}
+      status(message);$('asset-scan-raw').value='';feedback('success',value.item?.name||value.supplier_lookup?.product?.name||value.parsed.code||'识别成功',message,true);return {status:'success'};
+    }catch(error){if(own!==sequence)return {status:'stale'};status(error.message);feedback('error','识别未完成',error.message,true);return {status:'failure',message:error.message};}
   }
   function receive(value){
     if(value.item.tracking==='unit'){

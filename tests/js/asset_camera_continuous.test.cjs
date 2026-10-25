@@ -79,7 +79,8 @@ test('camera decodes the next label while the previous network request is unreso
     BrowserMultiFormatReader:class{},
   };
   const read=text=>{const d=deferred();pending.push({text,...d});return d.promise;};
-  f.context.window.AssetScan={task:'receive',resolve:read,retry:read};
+  let cancellations=0;
+  f.context.window.AssetScan={task:'receive',resolve:read,retry:read,cancel(){cancellations++;}};
   vm.runInNewContext(fs.readFileSync(path.join(root,'static/asset-camera.js'),'utf8'),f.context);
   await f.node('asset-camera-start').onclick();
   for(const code of ['A','B','A','B','C']){
@@ -88,15 +89,17 @@ test('camera decodes the next label while the previous network request is unreso
   }
   assert.deepEqual(pending.map(x=>x.text),['A','B','C']);
   assert.equal(f.node('asset-camera-video').srcObject,stream);
-  pending[0].resolve(true);
+  pending[2].resolve({status:'failure',message:'模拟超时'});
   await flush();
-  assert.match(f.node('asset-camera-status').textContent,/可继续扫描|已收集|查询/);
-  // Explicit retry allows rescanning a stationary label, regardless of lookup state.
+  assert.match(f.node('asset-camera-status').textContent,/模拟超时/);
+  assert.equal(f.node('asset-camera-retry').hidden,false,'failed latest label offers retry');
+  // Retry existing receipts using the retained entry rather than adding a duplicate.
   f.node('asset-camera-retry').onclick();
   assert.deepEqual(pending.map(x=>x.text),['A','B','C','C']);
   codes.push('C');f.fireTimer(260);
-  assert.equal(pending.length,4,'retry must not cause the stationary label to enqueue twice');
+  assert.equal(pending.length,4,'stationary label must not be requeued while retry is pending');
   f.node('asset-camera-stop').onclick();
+  assert.equal(cancellations,0,'turning off video must not cancel background receipt lookups');
   pending[3].reject(Error('late failure'));
   await flush();
   assert.equal(f.node('asset-camera-status').textContent,'相机已停止');
@@ -126,8 +129,8 @@ function lookupValue(raw){
 
 test('receive mode admits scans immediately and uses four concurrent background lookups',async()=>{
   const f=scannerFixture();
-  for(let i=0;i<6;i++)assert.equal(await f.scan.resolve('code-'+i),true);
-  assert.equal(await f.scan.resolve('code-0'),false,'same raw label must be retained once');
+  const issued=Array.from({length:6},(_,i)=>f.scan.resolve('code-'+i));
+  assert.equal((await f.scan.resolve('code-0')).status,'duplicate','same raw label must be retained once');
   await flush();
   assert.deepEqual(f.requests.map(x=>x.raw),['code-0','code-1','code-2','code-3']);
   assert.match(f.node('asset-scan-queue').innerHTML,/6 \/ 20/);
@@ -140,11 +143,15 @@ test('receive mode admits scans immediately and uses four concurrent background 
   f.node('asset-scan-dialog').emit('close');
   await flush();
   assert.equal(f.requests.slice(2).every(x=>x.signal.aborted),true,'closing dialog aborts all active lookups');
+  const outcomes=await Promise.all(issued);
+  assert.equal(outcomes[0].status,'success');
+  assert.equal(outcomes[1].status,'success');
+  assert(outcomes.slice(2).every(x=>x.status==='stale'),'closed session ignores old results');
 });
 
 test('lookup timeout frees a slot and late results cannot overwrite the error',async()=>{
   const f=scannerFixture();
-  for(let i=0;i<5;i++)await f.scan.resolve('slow-'+i);
+  const issued=Array.from({length:5},(_,i)=>f.scan.resolve('slow-'+i));
   await flush();
   assert.equal(f.requests.length,4);
   assert.equal(f.fireTimer(15000),true,'total timeout starts while queued');
@@ -155,4 +162,6 @@ test('lookup timeout frees a slot and late results cannot overwrite the error',a
   await flush();
   assert.match(f.node('asset-scan-queue').innerHTML,/查询超时/);
   f.node('asset-scan-dialog').emit('close');
+  const results=await Promise.all(issued);
+  assert.equal(results[0].status,'failure');
 });
