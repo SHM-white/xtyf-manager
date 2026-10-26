@@ -71,6 +71,8 @@ node tests/browser/pwa.cjs
 
 浏览器用例使用 Playwright Chromium 和 `tests/browser/pwa_server.py` 的 loopback 隔离数据库、会话密钥与静态资源副本；没有真实业务数据。测试中的发布/退役路由仅存在于该测试服务器。CI 新增 `pwa` 浏览器分组，Python 新模块自动归入现有 platform shard，JS 纳入现有全量测试；旧客户端 CI 保持启用。
 
+既有资产、头像及账户布局用例需要用 Playwright 路由模拟丢失响应、失败上传等故障，相关浏览器上下文显式设置 `serviceWorkers: 'block'`，避免 Service Worker 绕过这些拦截器。`pwa.cjs` 保持真实 Worker 注册、联网 API 与附件/PDF 流程，不使用这些故障路由；账户布局回归同时检查新增安装卡片在桌面跨两列、移动端按顺序排列且无溢出。
+
 覆盖：公开 MIME/无会话响应、所有主要模板、PNG 实际尺寸及 maskable 安全圆、业务 no-store/CSRF、有限许可表/内容版本变化、HTTP 源码归档、错误响应及隐私头拒绝缓存、断网 API 失败及导航说明、永久 Cookie 的浏览器配置文件关闭重开、独立上下文账户主题刷新、相机授权失败的相册/手动兜底、真实 PDF 预览/下载、图片 FormData 上传/受保护附件下载及私有 PDF 错误、跨部署 waiting/草稿保留/旧缓存清理、退出/换账号、只清理自有缓存的退役。实际安装提示受浏览器策略影响，自动化不冒充安装成功。
 
 ## 本地执行结果
