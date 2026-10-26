@@ -258,7 +258,7 @@
     try{
       const device=$('asset-camera-device').value;
       const cameraChoice=device?{deviceId:{exact:device}}:{facingMode:{ideal:'environment'}};
-      const videoConstraints={...cameraChoice,width:{ideal:1280},height:{ideal:720},frameRate:{ideal:15,max:24}};
+      const videoConstraints={...cameraChoice,width:{ideal:1280},height:{ideal:720},frameRate:{ideal:30,max:30}};
       const openedStream=await navigator.mediaDevices.getUserMedia({audio:false,video:videoConstraints});
       if(own!==generation){openedStream.getTracks().forEach(t=>t.stop());return;}
       stream=openedStream;hadLiveCamera=true;
