@@ -143,7 +143,9 @@ def match_candidates(db, entry, campus_id):
             "SELECT item_id FROM asset_identifiers WHERE code=? "
             "UNION SELECT item_id FROM asset_code_aliases WHERE namespace='lcsc-cn' AND code=?",
             (code, code)))
-    if not ids and name:
+    # A supplied recognized vendor identifier must not silently fall back to a
+    # same-name item when its C number has not been linked.
+    if not ids and name and not re.fullmatch(r"C[1-9][0-9]{0,17}", code):
         catalog = db.execute("SELECT id,name,specification FROM asset_items WHERE active=1").fetchall()
         same_name = [r for r in catalog if r["name"].casefold() == name]
         ids.update(r["id"] for r in same_name if not spec or r["specification"].casefold() == spec)
@@ -214,7 +216,7 @@ def commit(db, data):
     if not isinstance(rows, list) or not 1 <= len(rows) <= BATCH_LIMIT:
         raise Invalid(f"每批必须包含 1 至 {BATCH_LIMIT} 行物料")
     quantities, identities = {}, {}
-    created = []
+    created, new_drafts = [], {}
     for entry in rows:
         if not isinstance(entry, dict):
             raise Invalid("物料行格式无效")
@@ -237,8 +239,16 @@ def commit(db, data):
                 if not re.fullmatch(r"C[1-9][0-9]{0,17}", code):
                     raise Invalid("新建物料的外部编号仅支持嘉立创 C 编号")
                 candidate["supplier_code"] = code
-            item_id = save_catalog_record(db, candidate, "items")["id"]
-            created.append(item_id)
+            draft_key = code or ("name", candidate["name"].casefold(),
+                                 candidate["specification"].casefold())
+            if draft_key in new_drafts:
+                item_id, original = new_drafts[draft_key]
+                if candidate != original:
+                    raise Invalid("同一待建档物料存在不一致的名称、规格或单位")
+            else:
+                item_id = save_catalog_record(db, candidate, "items")["id"]
+                new_drafts[draft_key] = (item_id, candidate)
+                created.append(item_id)
         else:
             if set(entry) - {"item_id", "quantity", "version", "stock_version"}:
                 raise Invalid("物料行参数无效")
@@ -272,7 +282,7 @@ def commit(db, data):
             "consume" if identities[item_id]["kind"] == "consumable" else "borrow")
         result = operate_record(db, {"action": action, "item_id": item_id,
                                      "campus_id": campus_id, "quantity": qty,
-                                     "reason": f"BOM批量{'入库' if mode == 'inbound' else '出库'}：{reason}"})
+                                     "reason": f"BOM批量{'入库' if mode == 'inbound' else f'出库（{sets}套）'}：{reason}"})
         results.append({"item_id": item_id, "quantity": qty, "action": action,
                         "event_id": result["event_id"], "loan_id": result["loan_id"]})
     return {"rows": len(rows), "sets": sets, "created": created, "operations": results}
