@@ -168,6 +168,79 @@ def match_candidates(db, entry, campus_id):
     return result
 
 
+
+def raw_table(upload):
+    """Expose bounded cells for a human-selected header and column mapping."""
+    source = spreadsheet_rows(upload)
+    lines = []
+    for row_no, cells in enumerate(source, start=1):
+        values = [clean(value) for value in cells[:32]]
+        if any(values):
+            lines.append({"row_no": row_no, "cells": values})
+    if not lines:
+        raise Invalid("表格没有可导入的数据")
+    best, score = lines[0]["row_no"], -1
+    for record in lines:
+        if record["row_no"] > 10:
+            break
+        found = {ALIAS_LOOKUP.get(normalize(v)) for v in record["cells"]}
+        rank = (4 if "quantity" in found else 0) + (3 if "name" in found or "code" in found else 0) + len(found - {None})
+        if rank > score:
+            best, score = record["row_no"], rank
+    if len([v for v in lines if v["row_no"] > best]) > ROW_LIMIT:
+        raise Invalid(f"每次最多导入 {ROW_LIMIT} 行，请拆分文件")
+    return lines, best
+
+
+@bp.post("/api/assets/bom/import")
+@login_required
+def import_sheet():
+    try:
+        if request.content_length and request.content_length > FILE_LIMIT + 16384:
+            raise Invalid("文件上传体积过大", 413)
+        upload = request.files.get("file")
+        if upload is None:
+            raise Invalid("请选择文件")
+        lines, header_row = raw_table(upload)
+        return jsonify(ok=True, lines=lines, header_row=header_row,
+                       file_name=clean(upload.filename or "", 120))
+    except Invalid as exc:
+        return jsonify(ok=False, error=exc.message), exc.status
+
+
+@bp.post("/api/assets/bom/match")
+@login_required
+def match_rows():
+    """Match a manually edited list without writing inventory or creating assets."""
+    try:
+        if request.content_length and request.content_length > 96 * 1024:
+            raise Invalid("匹配请求体过大", 413)
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict) or set(data) - {"campus_id", "rows"}:
+            raise Invalid("物料匹配参数无效")
+        campus_id = data.get("campus_id")
+        if type(campus_id) is not int:
+            raise Invalid("请选择操作校区")
+        db = get_db()
+        if not row(db, "asset_campuses", campus_id)["active"]:
+            raise Invalid("校区已停用", 409)
+        entries = data.get("rows")
+        if not isinstance(entries, list) or not 1 <= len(entries) <= ROW_LIMIT:
+            raise Invalid(f"每次必须匹配 1 至 {ROW_LIMIT} 行")
+        result = []
+        for i, supplied in enumerate(entries, start=1):
+            if not isinstance(supplied, dict) or set(supplied) - {"code", "name", "specification", "unit", "quantity"}:
+                raise Invalid(f"第 {i} 行字段无效")
+            entry = {key: clean(supplied.get(key)) for key in ("code", "name", "specification", "unit")}
+            if not entry["code"] and not entry["name"]:
+                raise Invalid(f"第 {i} 行缺少物料编号或名称")
+            entry["quantity"] = parse_quantity(supplied.get("quantity"))
+            result.append(match_candidates(db, entry, campus_id))
+        return jsonify(ok=True, matches=result, can_manage=manager())
+    except Invalid as exc:
+        return jsonify(ok=False, error=exc.message), exc.status
+
+
 @bp.post("/api/assets/bom/preview")
 @login_required
 def preview():

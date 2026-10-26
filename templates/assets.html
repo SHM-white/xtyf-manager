@@ -10,7 +10,6 @@
       <p id="asset-description" class="asset-muted">从一颗螺丝到一台设备，让每一份物料都有去处。</p>
     </div>
     <div class="asset-header-actions">
-      <button class="btn" id="asset-bom-open" type="button" hidden>BOM / 表格批量</button>
       <button class="btn" id="asset-scan-general" type="button" data-asset-scan-task="general" {% if not asset_units_enabled %}hidden{% endif %}>扫一扫</button>
       <button class="btn" id="asset-refresh" type="button"><svg class="asset-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M6 7a7 7 0 0 1 12-1l2 3M4 15l2 3a7 7 0 0 0 12-1"/></svg>刷新</button>
       <button class="btn primary" id="asset-create" type="button" hidden><span aria-hidden="true">＋</span> 新增 / 扫码入库</button>
@@ -20,6 +19,7 @@
   <nav class="asset-tabs asset-main-nav" aria-label="物料管理主导航">
     <a class="asset-main-link" data-asset-nav="all" href="/assets">物料仓库</a>
     <a class="asset-main-link" data-asset-nav="mine" href="/assets?view=mine">我的借用</a>
+    <a class="asset-main-link" data-asset-nav="table" href="/assets?view=table">表格批量</a>
   </nav>
   <div id="asset-admin-tools" class="asset-admin-tools" hidden>
     <span class="asset-tools-label">管理工具</span>
@@ -67,25 +67,50 @@
   <div id="asset-content" aria-busy="true"></div>
   </section>
   <section id="asset-mine-units" class="asset-section asset-unit-drawer" aria-labelledby="asset-unit-title" hidden></section>
+<section id="asset-bom-page" class="asset-bom-page" aria-labelledby="asset-bom-page-title" hidden>
+  <header class="asset-heading asset-bom-page-head">
+    <div><p class="asset-eyebrow">SPREADSHEET / 批量物料工作区</p>
+      <h2 id="asset-bom-page-title">导入与编辑表格</h2>
+      <p class="asset-muted">先导入并整理物料清单，再选择批量入库或按套数出库。编辑与匹配均不会修改实际库存。</p></div>
+    <button class="btn" id="asset-bom-clear" type="button">清空工作区</button>
+  </header>
+  <section class="asset-bom-step" aria-labelledby="asset-bom-upload-title">
+    <h3 id="asset-bom-upload-title"><span class="asset-bom-step-number">1</span> 导入表格</h3>
+    <div class="asset-bom-import-bar">
+      <label>CSV / TSV / XLSX（最大 2 MiB，最多 200 行）
+        <input id="asset-bom-file" type="file" accept=".csv,.tsv,.xlsx"></label>
+      <button class="btn primary" id="asset-bom-import" type="button">导入并读取表格</button>
+    </div>
+    <p id="asset-bom-import-name" class="asset-muted" aria-live="polite"></p>
+      <p id="asset-bom-message" role="status" aria-live="polite">请选择表格，上传后可映射列名并编辑每一行。</p>
+
+  </section>
+  <section id="asset-bom-editor" class="asset-bom-step" aria-labelledby="asset-bom-editor-title" hidden>
+    <h3 id="asset-bom-editor-title"><span class="asset-bom-step-number">2</span> 列映射与表格编辑</h3>
+    <p class="asset-muted">自动识别列名，也可以手动指定每列的含义；会记住相同表头的映射。变更列映射会重新读取原文件，覆盖当前逐格修改。</p>
+    <label class="asset-bom-header-picker">表头位于<select id="asset-bom-header-row"></select></label>
+    <div id="asset-bom-mapping" class="asset-bom-mapping"></div>
+    <p class="asset-muted">以下内容可以直接修改名称、型号、物料编号、数量及单位。无需回到 Excel 整理。非数量物料请移除，另走原有单件或充足／不足管理。</p>
+    <div id="asset-bom-rows" class="asset-bom-table-wrap" role="region" aria-label="可编辑物料表格" tabindex="0"></div>
+    <div class="asset-actions"><button class="btn" id="asset-bom-add-row" type="button">＋ 添加物料行</button></div>
+  </section>
+  <section id="asset-bom-operation" class="asset-bom-step" aria-labelledby="asset-bom-operation-title" hidden>
+    <h3 id="asset-bom-operation-title"><span class="asset-bom-step-number">3</span> 选择操作、匹配并提交</h3>
+    <form id="asset-bom-form" class="asset-fields">
+      <div class="asset-form-grid">
+        <label>操作方式<select id="asset-bom-mode"><option value="inbound">表格批量入库（按每行实际数量）</option><option value="outbound">按 BOM 套数出库 / 领用</option></select></label>
+        <label>物料所在校区<select id="asset-bom-campus" required><option value="">请选择校区</option></select></label>
+      </div>
+      <label id="asset-bom-sets-label" hidden>出库套数<input id="asset-bom-sets" type="number" min="1" max="1000000" step="1" value="1" required></label>
+      <div class="asset-actions"><button class="btn" id="asset-bom-match" type="button">匹配 / 重新匹配库存</button><span class="asset-muted">自动匹配编号或名称规格；多个候选需人工选择，也可指定物料 ID。</span></div>
+      <p id="asset-bom-summary" class="asset-operation-summary" aria-live="polite"></p>
+      <label>用途或入库原因<textarea id="asset-bom-reason" rows="2" maxlength="500" required placeholder="例如：制作 3 套步兵电控板；本次采购补货"></textarea></label>
+      <div class="asset-bom-submit"><button class="btn primary" id="asset-bom-save" type="submit" disabled>核对无误，确认批量提交 / 重试</button></div>
+    </form>
+  </section>
+  <p id="asset-bom-message-placeholder" class="asset-muted">表格仅在内存中解析；不会保存原始文件。已有库存及操作记录只有在最后确认提交时才会改变。</p>
 </section>
-<dialog id="asset-bom-dialog" class="asset-dialog asset-dialog-wide" aria-labelledby="asset-bom-title">
-  <header class="asset-heading"><div><p class="asset-eyebrow">BOM / 批量物料</p><h2 id="asset-bom-title">表格批量匹配与出入库</h2></div><button id="asset-bom-close" class="btn" type="button">关闭</button></header>
-  <form id="asset-bom-form" class="asset-fields">
-    <div class="asset-form-grid"><label>操作方式<select id="asset-bom-mode"><option value="outbound">按 BOM 出库 / 领用</option><option value="inbound">表格批量入库</option></select></label>
-    <label>操作校区<select id="asset-bom-campus" required><option value="">请选择校区</option></select></label></div>
-    <label id="asset-bom-sets-label">出库套数<input id="asset-bom-sets" name="sets" type="number" min="1" max="1000000" step="1" value="1" required></label>
-    <label>选择 BOM / 入库表格（CSV、TSV、XLSX；不超过 2 MiB，最多 200 行）
-      <input id="asset-bom-file" type="file" accept=".csv,.tsv,.xlsx" required>
-    </label>
-    <p class="asset-muted">表格至少包含“数量”和“名称／物料编号”列。按编号优先匹配，名称与型号用于辅助匹配；有歧义的物料须手动确认。新物料入库需要管理权限。单件设备与充足／不足耗材不能按数量批量操作。</p>
-    <div class="asset-actions"><button class="btn" id="asset-bom-preview" type="button">解析并匹配库存</button><span class="asset-muted">上传和预览不会修改库存</span></div>
-    <p id="asset-bom-message" role="status" aria-live="polite"></p>
-    <div id="asset-bom-rows" class="asset-bom-table-wrap"></div>
-    <p id="asset-bom-summary" class="asset-operation-summary" aria-live="polite"></p>
-    <label>用途／入库原因（必填）<textarea name="reason" rows="2" maxlength="500" required placeholder="如：制作 3 套步兵电控板；采购补货入库"></textarea></label>
-    <footer class="asset-dialog-footer"><button class="btn primary" id="asset-bom-save" type="submit" disabled>确认提交 / 重试</button></footer>
-  </form>
-</dialog>
+</section>
 <dialog id="asset-add-dialog" class="asset-dialog" aria-labelledby="asset-add-title">
   <header class="asset-heading"><h2 id="asset-add-title">新增 / 扫码入库</h2><button class="btn" id="asset-add-close" type="button">关闭</button></header>
   <p class="asset-muted">选择手头的物料情况，进入对应流程。</p>

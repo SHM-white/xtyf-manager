@@ -172,6 +172,53 @@ class AssetBomTest(unittest.TestCase):
         self.batch([self.line(status_id)], status=409)
         self.batch([self.line(unit_id)], mode="inbound", status=409)
 
+    def test_unrecognized_columns_are_editable_after_raw_import(self):
+        # Raw import must not demand recognizable BOM headers or choose an operation.
+        content = ("开发板用料清单\n"
+                   "Vendor Ref,Value Text,Pieces Per PCB,Measurement\n"
+                   "C98765432,BOM测试电阻,7,颗\n").encode()
+        response = self.member.post("/api/assets/bom/import", data={
+            "file": (io.BytesIO(content), "custom.csv"),
+        }, content_type="multipart/form-data")
+        self.assertEqual(response.status_code, 200, response.get_json())
+        parsed = response.get_json()
+        self.assertTrue(parsed["ok"])
+        self.assertGreaterEqual(len(parsed["lines"]), 3)
+        self.assertEqual(parsed["lines"][1]["cells"][0], "Vendor Ref")
+        self.assertEqual(parsed["lines"][2]["cells"][2], "7")
+        # The editor can remap columns and correct the material before matching.
+        matched = self.member.post("/api/assets/bom/match", json={
+            "campus_id": self.campus, "rows": [{
+                "code": "C98765432", "name": "BOM测试电阻",
+                "specification": "10k 0603", "quantity": 7, "unit": "颗",
+            }],
+        })
+        self.assertEqual(matched.status_code, 200, matched.get_json())
+        self.assertEqual(matched.get_json()["matches"][0][0]["id"], self.part)
+        self.assertEqual(self.detail()[1]["available"], 100)
+
+    def test_match_validation_and_import_limit(self):
+        result = self.member.post("/api/assets/bom/match", json={
+            "campus_id": self.campus,
+            "rows": [{"code": "", "name": "", "specification": "", "quantity": 1, "unit": "个"}],
+        })
+        self.assertEqual(result.status_code, 400, result.get_json())
+        many = "Name,Qty\n" + "".join("Part"+str(i)+",1\n" for i in range(201))
+        result = self.member.post("/api/assets/bom/import", data={
+            "file": (io.BytesIO(many.encode()), "many.csv"),
+        }, content_type="multipart/form-data")
+        self.assertEqual(result.status_code, 400, result.get_json())
+        anonymous = app_module.app.test_client()
+        self.assertEqual(anonymous.post("/api/assets/bom/import").status_code, 401)
+        self.assertEqual(anonymous.post("/api/assets/bom/match", json={}).status_code, 401)
+
+    def test_table_workbench_nav(self):
+        page = self.member.get("/assets?view=table")
+        self.assertEqual(page.status_code, 200)
+        for marker in (b"asset-bom-page", b"asset-bom-header-row", b"asset-bom-mapping",
+                       b"asset-bom-rows", b"asset-bom-operation"):
+            self.assertIn(marker, page.data)
+
     def test_bad_files_and_unauthorized_access(self):
         self.preview("bom.xls", b"nonsense", status=400)
         self.preview("bom.csv", b"invalid,header\n1,2", status=400)
