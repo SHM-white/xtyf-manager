@@ -5,6 +5,7 @@ use the shared asset_requests idempotency ledger and immutable asset_events.
 """
 import csv
 import io
+from itertools import islice
 import re
 import zipfile
 
@@ -74,7 +75,7 @@ def spreadsheet_rows(upload):
                 raise Invalid("CSV 编码无效，请保存为 UTF-8") from None
         sample = payload[:4096]
         delimiter = "\t" if suffix == "tsv" else (max((",", "\t", ";"), key=sample.count))
-        return list(csv.reader(io.StringIO(payload), delimiter=delimiter))[:ROW_LIMIT + 12]
+        return list(islice(csv.reader(io.StringIO(payload), delimiter=delimiter), ROW_LIMIT + 12))
     if not zipfile.is_zipfile(io.BytesIO(raw)):
         raise Invalid("XLSX 文件损坏")
     with zipfile.ZipFile(io.BytesIO(raw)) as archive:
@@ -149,7 +150,7 @@ def match_candidates(db, entry, campus_id):
         catalog = db.execute("SELECT id,name,specification FROM asset_items WHERE active=1").fetchall()
         same_name = [r for r in catalog if r["name"].casefold() == name]
         ids.update(r["id"] for r in same_name if not spec or r["specification"].casefold() == spec)
-    elif not ids and code:
+    elif not ids and code and not re.fullmatch(r"C[1-9][0-9]{0,17}", code):
         ids.update(r["id"] for r in db.execute(
             "SELECT id FROM asset_items WHERE upper(specification)=? AND active=1 LIMIT 20", (code,)))
     result = []
