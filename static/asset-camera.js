@@ -226,7 +226,7 @@
           // ask ZXing for uncommon vendor labels without blocking preview.
           nativeMisses=0;submitWorkerFrame(own);
         }
-      }catch(_){nativeDetector=null;if(!decodeWorker&&!reader)reader=new ZXing.MultiFormatReader();}
+      }catch(_){if(own===generation){nativeDetector=null;if(!decodeWorker&&!reader)reader=new ZXing.MultiFormatReader();}}
       if(own===generation&&stream)scheduleDecode(own,nativeDetector?NATIVE_INTERVAL_MS:SCAN_INTERVAL_MS);
       return;
     }
