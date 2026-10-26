@@ -194,6 +194,8 @@ def favicon():
 from modules.assets import bp as assets_bp, migrate_assets
 
 app.register_blueprint(assets_bp)
+from modules.asset_bom import bp as asset_bom_bp
+app.register_blueprint(asset_bom_bp)
 from modules.asset_scan import bp as asset_scan_bp
 app.register_blueprint(asset_scan_bp)
 from modules.asset_units import bp as asset_units_bp
