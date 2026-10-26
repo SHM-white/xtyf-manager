@@ -157,7 +157,7 @@ class AssetBomTest(unittest.TestCase):
         self.assertEqual(self.detail(result["created"][0])[1]["available"], 10)
 
     def test_unlinked_c_code_is_not_silently_matched_by_same_name(self):
-        table = "嘉立创编号,名称,型号,数量\\nC99999999,BOM测试电阻,10k 0603,2\\n".encode()
+        table = "嘉立创编号,名称,型号,数量\nC99999999,BOM测试电阻,10k 0603,2\n".encode()
         result = self.preview("bom.csv", table)
         self.assertEqual(result["rows"][0]["candidates"], [])
 
