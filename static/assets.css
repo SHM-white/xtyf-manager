@@ -1,5 +1,14 @@
 /* Material workspace: shared palette tokens align browser and packaged clients. */
 .asset-workspace { max-width:1280px; margin:auto; min-width:0; }
+.asset-bom-table-wrap { overflow:auto; max-height:55vh; border:1px solid var(--control-border); border-radius:var(--radius-control,10px); }
+.asset-bom-table { width:100%; border-collapse:collapse; min-width:790px; }
+.asset-bom-table th,.asset-bom-table td { padding:10px 12px; border-bottom:1px solid var(--control-border); text-align:left; vertical-align:top; }
+.asset-bom-table th { position:sticky; top:0; background:var(--ux-surface); z-index:1; }
+.asset-bom-table td small { display:block; color:var(--ux-muted); margin-top:4px; }
+.asset-bom-table select { min-width:200px; }
+.asset-bom-manual { display:flex; gap:6px; margin-top:6px; align-items:center; }
+.asset-bom-manual input { min-width:90px; max-width:120px; }
+#asset-bom-message[data-state="error"] { color:var(--ux-danger,#b3261e); }
 .asset-heading { display:flex; justify-content:space-between; align-items:center; gap:16px; flex-wrap:wrap; }
 .asset-heading h1,.asset-heading h2 { margin:8px 0; }
 .asset-eyebrow { margin:0 0 10px; letter-spacing:.12em; font-size:11px; font-weight:650; color:var(--ux-muted); }
