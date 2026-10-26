@@ -10,6 +10,7 @@
       <p id="asset-description" class="asset-muted">从一颗螺丝到一台设备，让每一份物料都有去处。</p>
     </div>
     <div class="asset-header-actions">
+      <button class="btn" id="asset-bom-open" type="button" hidden>BOM / 表格批量</button>
       <button class="btn" id="asset-scan-general" type="button" data-asset-scan-task="general" {% if not asset_units_enabled %}hidden{% endif %}>扫一扫</button>
       <button class="btn" id="asset-refresh" type="button"><svg class="asset-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M6 7a7 7 0 0 1 12-1l2 3M4 15l2 3a7 7 0 0 0 12-1"/></svg>刷新</button>
       <button class="btn primary" id="asset-create" type="button" hidden><span aria-hidden="true">＋</span> 新增 / 扫码入库</button>
@@ -67,6 +68,24 @@
   </section>
   <section id="asset-mine-units" class="asset-section asset-unit-drawer" aria-labelledby="asset-unit-title" hidden></section>
 </section>
+<dialog id="asset-bom-dialog" class="asset-dialog asset-dialog-wide" aria-labelledby="asset-bom-title">
+  <header class="asset-heading"><div><p class="asset-eyebrow">BOM / 批量物料</p><h2 id="asset-bom-title">表格批量匹配与出入库</h2></div><button id="asset-bom-close" class="btn" type="button">关闭</button></header>
+  <form id="asset-bom-form" class="asset-fields">
+    <div class="asset-form-grid"><label>操作方式<select id="asset-bom-mode"><option value="outbound">按 BOM 出库 / 领用</option><option value="inbound">表格批量入库</option></select></label>
+    <label>操作校区<select id="asset-bom-campus" required><option value="">请选择校区</option></select></label></div>
+    <label id="asset-bom-sets-label">出库套数<input id="asset-bom-sets" name="sets" type="number" min="1" max="1000000" step="1" value="1" required></label>
+    <label>选择 BOM / 入库表格（CSV、TSV、XLSX；不超过 2 MiB，最多 200 行）
+      <input id="asset-bom-file" type="file" accept=".csv,.tsv,.xlsx" required>
+    </label>
+    <p class="asset-muted">表格至少包含“数量”和“名称／物料编号”列。按编号优先匹配，名称与型号用于辅助匹配；有歧义的物料须手动确认。新物料入库需要管理权限。单件设备与充足／不足耗材不能按数量批量操作。</p>
+    <div class="asset-actions"><button class="btn" id="asset-bom-preview" type="button">解析并匹配库存</button><span class="asset-muted">上传和预览不会修改库存</span></div>
+    <p id="asset-bom-message" role="status" aria-live="polite"></p>
+    <div id="asset-bom-rows" class="asset-bom-table-wrap"></div>
+    <p id="asset-bom-summary" class="asset-operation-summary" aria-live="polite"></p>
+    <label>用途／入库原因（必填）<textarea name="reason" rows="2" maxlength="500" required placeholder="如：制作 3 套步兵电控板；采购补货入库"></textarea></label>
+    <footer class="asset-dialog-footer"><button class="btn primary" id="asset-bom-save" type="submit" disabled>确认提交 / 重试</button></footer>
+  </form>
+</dialog>
 <dialog id="asset-add-dialog" class="asset-dialog" aria-labelledby="asset-add-title">
   <header class="asset-heading"><h2 id="asset-add-title">新增 / 扫码入库</h2><button class="btn" id="asset-add-close" type="button">关闭</button></header>
   <p class="asset-muted">选择手头的物料情况，进入对应流程。</p>
@@ -110,4 +129,4 @@
 <div class="asset-label-download"><p id="asset-label-status" role="status"></p><a id="asset-label-download" class="btn primary" download="asset-labels.pdf" hidden>下载打印 PDF</a></div>
 </dialog>
 {% endblock %}
-{% block scripts %}<script src="{{ url_for('static', filename='assets.js') }}"></script>{% if asset_units_enabled %}<script src="{{ url_for('static', filename='vendor/asset-tools/zxing.js') }}"></script><script src="{{ url_for('static', filename='vendor/asset-tools/barcode.js') }}"></script><script src="{{ url_for('static', filename='asset-label-layout.js') }}"></script>{% for script in ['asset-units.js','asset-scan.js','asset-camera.js','asset-labels.js','asset-lifecycle.js'] %}<script src="{{ url_for('static', filename=script) }}"></script>{% endfor %}{% endif %}{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='assets.js') }}"></script>{% if asset_units_enabled %}<script src="{{ url_for('static', filename='vendor/asset-tools/zxing.js') }}"></script><script src="{{ url_for('static', filename='vendor/asset-tools/barcode.js') }}"></script><script src="{{ url_for('static', filename='asset-label-layout.js') }}"></script>{% for script in ['asset-units.js','asset-scan.js','asset-camera.js','asset-labels.js','asset-lifecycle.js'] %}<script src="{{ url_for('static', filename=script) }}"></script>{% endfor %}{% endif %}<script src="{{ url_for('static', filename='asset-bom.js') }}"></script>{% endblock %}
