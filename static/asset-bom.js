@@ -8,6 +8,7 @@
   const save=$('asset-bom-save');
   if(!dialog||!core)return;
   let previewRows=[],canManage=false,file=null,loadedMode='',loadedCampus='',pendingBatch=null,busy=false;
+  function lockDraft(locked){for(const element of form.elements)if(element!==save)element.disabled=locked;}
   const key='xtyf.assets.unconfirmed.v1:'+(window.XTYF?.config?.serverUrl||location.origin);
   const token=()=>Array.from(crypto.getRandomValues(new Uint8Array(16)),x=>x.toString(16).padStart(2,'0')).join('');
   const show=(text,alert=false)=>{message.textContent=text;message.dataset.state=alert?'error':'info';};
@@ -139,10 +140,11 @@
     configure();core.showDialog(dialog);
   });
   $('asset-bom-close').addEventListener('click',()=>{if(!busy&&!pendingBatch)dialog.close();});
+  dialog.addEventListener('cancel',event=>{if(busy||pendingBatch)event.preventDefault();});
   $('asset-bom-preview').addEventListener('click',parse);
   upload.addEventListener('change',()=>{file=upload.files[0];reset();});
   for(const el of [campus,mode])el.addEventListener('change',()=>{if(previewRows.length)reset('校区或操作方式已改变，请重新解析表格。');});
-  sets.addEventListener('input',()=>{sets.value=sets.value;summaryRefresh();});
+  sets.addEventListener('input',summaryRefresh);
   mode.addEventListener('change',()=>{$('asset-bom-sets-label').hidden=mode.value!=='outbound';});
   form.addEventListener('submit',async e=>{
     e.preventDefault();if(busy||core.blocked)return;
@@ -166,15 +168,15 @@
       try{sessionStorage.setItem(key,JSON.stringify(pendingBatch));}
       catch(_){pendingBatch=null;show('无法保存幂等重试信息，本次未提交。',true);return;}
     }
-    busy=true;save.disabled=true;$('asset-bom-close').disabled=true;
+    busy=true;save.disabled=true;$('asset-bom-close').disabled=true;lockDraft(true);
     try{
       const result=await core.api(pendingBatch.path,{...pendingBatch.body,request_id:pendingBatch.request_id});
-      sessionStorage.removeItem(key);pendingBatch=null;
+      sessionStorage.removeItem(key);pendingBatch=null;lockDraft(false);
       reset('已完成 '+result.operations.length+' 种物料的批量登记。');
       form.reset();file=null;
       await core.load();show('提交成功，已写入库存及流转记录。');
     }catch(error){
-      if(error.businessRejected){sessionStorage.removeItem(key);pendingBatch=null;show(error.message+'；本次未写入，请重新预览。',true);}
+      if(error.businessRejected){sessionStorage.removeItem(key);pendingBatch=null;lockDraft(false);reset();show(error.message+'；本次未写入，请重新预览。',true);}
       else {show('请求结果尚未确认：'+error.message+'。请点击“确认提交／重试”重发同一请求，勿重复新建批次。',true);save.disabled=false;}
     }finally{busy=false;$('asset-bom-close').disabled=!!pendingBatch;if(pendingBatch)save.disabled=false;}
   });
