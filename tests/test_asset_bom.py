@@ -147,6 +147,20 @@ class AssetBomTest(unittest.TestCase):
         candidates = self.preview("new.csv", "编号,名称,数量\nC98765433,BOM新元件,12\n".encode())["rows"][0]["candidates"]
         self.assertEqual(len(candidates), 1)
 
+    def test_new_draft_repeated_rows_share_one_item(self):
+        draft = {"item_id": None, "name": "BOM合成芯片", "specification": "SOP8",
+                 "unit": "个", "code": "C98765435", "quantity": 4}
+        other = {**draft, "quantity": 6}
+        result = self.batch([draft, other], mode="inbound", client=self.admin)
+        self.assertEqual(len(result["created"]), 1)
+        self.assertEqual(result["operations"][0]["quantity"], 10)
+        self.assertEqual(self.detail(result["created"][0])[1]["available"], 10)
+
+    def test_unlinked_c_code_is_not_silently_matched_by_same_name(self):
+        table = "嘉立创编号,名称,型号,数量\\nC99999999,BOM测试电阻,10k 0603,2\\n".encode()
+        result = self.preview("bom.csv", table)
+        self.assertEqual(result["rows"][0]["candidates"], [])
+
     def test_status_and_unit_material_rejected(self):
         status_id = self.post(self.admin, "/api/assets/catalog/items", {
             "name": "BOM测试螺丝", "unit": "袋", "kind": "consumable",
