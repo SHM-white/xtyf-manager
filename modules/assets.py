@@ -164,12 +164,21 @@ def mutation(view):
                 if previous["payload"] != payload:
                     raise Invalid("重复请求标识对应了不同内容，请重新操作", 409)
                 db.rollback()
-                return jsonify(json.loads(previous["result"]))
+                result = json.loads(previous["result"])
+                # Complete legacy receipts from their original, committed request,
+                # never from today's mutable stock or catalog.
+                if request.path.endswith("/scan/batch") and len(result.get("receipts", [])) == len(data.get("receipts", [])):
+                    for receipt, original in zip(result["receipts"], data["receipts"]):
+                        receipt.setdefault("actual_quantity", original["quantity"])
+                if request.path.endswith("/units/stocktakes/scan-batch") and len(result.get("events", [])) == len(data.get("unit_ids", [])):
+                    for receipt, identity in zip(result["events"], data["unit_ids"]):
+                        receipt.setdefault("unit_id", identity)
+                return jsonify({**result, "request_id": key})
             result = dict(ok=True, **view(db, data, *args, **kwargs))
             db.execute("INSERT INTO asset_requests VALUES(?,?,?,?)",
                        (user["id"], key, payload, json.dumps(result)))
             db.commit()
-            return jsonify(result)
+            return jsonify({**result, "request_id": key})
         except Invalid as error:
             db.rollback()
             return jsonify(ok=False, error=error.message), error.status
@@ -207,8 +216,9 @@ def page():
 @login_required
 def catalog():
     db = get_db()
-    return jsonify(ok=True, can_manage=manager(), intake_enabled=True, write_limits={"default": asset_request_limit("assets.operations"),
-                         "bom_commit": asset_request_limit("asset_bom.commit")}, server_time=stamp(),
+    return jsonify(ok=True, can_manage=manager(), intake_enabled=True, write_receipts=True,
+                   write_limits={"default": asset_request_limit("assets.operations"),
+                                 "bom_commit": asset_request_limit("asset_bom.commit")}, server_time=stamp(),
                    member_id=current_user()["id"],
                    categories=[dict(r) for r in db.execute("SELECT * FROM asset_categories ORDER BY name,id")],
                    campuses=[dict(r) for r in db.execute("SELECT * FROM asset_campuses ORDER BY name,id")])
