@@ -110,8 +110,8 @@ function taskHighlightClasses(task) {
   ].filter(Boolean).join(" ");
 }
 function taskAttentionBadge(task, compact = false) {
-  if (isOverdue(task)) return badge(compact ? "逾期" : daysLeftText(task), "orange");
-  if (isDueSoon(task)) return badge(compact ? (task.days_left === 0 ? "今日" : "临期") : daysLeftText(task), "orange");
+  if (isOverdue(task)) return badge(compact ? "逾期" : daysLeftText(task), daysLeftClass(task));
+  if (isDueSoon(task)) return badge(compact ? (task.days_left === 0 ? "今日" : "临期") : daysLeftText(task), daysLeftClass(task));
   if (!isFinishedTask(task) && task.dependency_warnings?.length) return badge(compact ? "依赖" : "依赖提醒", "task-dependency");
   return "";
 }
@@ -164,8 +164,8 @@ function daysLeftText(task) {
 }
 function daysLeftClass(task) {
   if (["已完成", "已取消"].includes(task.status) || task.days_left == null) return "gray";
-  if (task.days_left < 0) return "red";
-  return task.days_left <= 3 ? "orange" : "blue";
+  if (task.days_left < 0) return "orange task-deadline-overdue";
+  return task.days_left <= 3 ? "orange task-deadline-soon" : "blue";
 }
 function badge(text, cls = "gray") {
   return `<span class="badge ${esc(cls)}">${esc(text)}</span>`;
