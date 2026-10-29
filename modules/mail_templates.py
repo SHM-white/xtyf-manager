@@ -257,6 +257,25 @@ def render_verification_html(code):
                      '您的邮箱绑定验证码已生成，30 分钟内有效')
 
 
+
+def render_password_recovery_html(code):
+    details = (
+        '<p style="margin:0 0 15px;font-size:14px;color:#52647c;line-height:1.8">'
+        '有人申请重置此账号的密码。如是您本人操作，请在登录页面的找回密码表单输入下方验证码。</p>'
+        '<table role="presentation" width="100%" cellspacing="0" cellpadding="0">'
+        '<tr><td align="center" style="padding:20px;background:#ebf2fd;border:1px solid #d9e6fa">'
+        f'<span style="font-size:32px;letter-spacing:7px;color:#1e4d95;font-weight:700">{_e(code)}</span>'
+        '</td></tr></table>'
+        '<p style="margin:15px 0;font-size:13px;color:#9b531b">验证码 15 分钟内有效，'
+        '最多尝试 5 次，请勿转发。</p>'
+        '<p style="margin:0;font-size:13px;color:#718098">如非本人操作，请忽略此邮件。'
+        '系统不会通过邮件索取密码。</p>'
+    )
+    return _document('重置登录密码', '账户安全 / 密码找回',
+                     '请在原登录页面输入验证码并设置新密码', details,
+                     '巡天御风密码重置验证码，15 分钟内有效')
+
+
 def render_test_html():
     details = ('<p style="margin:0 0 13px;font-size:16px;font-weight:700;'
                'color:#1b654a">邮件模板预览成功</p>'
