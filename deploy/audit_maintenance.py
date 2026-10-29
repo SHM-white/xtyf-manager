@@ -15,7 +15,7 @@ def main():
     parser.add_argument('--database', required=True)
     parser.add_argument('--apply', action='store_true')
     parser.add_argument('--backup')
-    parser.add_argument('--reset-classification', action='store_true', help='保留记录，将所有分类恢复为保守关键类')
+    parser.add_argument('--reset-classification', action='store_true', help='保留记录，非财务统一降级为保守严重类；财务仍永久保留')
     args = parser.parse_args()
     path = Path(args.database).resolve(strict=True)
     if args.apply and (not args.backup or Path(args.backup).exists()):
@@ -28,7 +28,7 @@ def main():
         try:
             migrate_classification(db)
             if args.reset_classification:
-                db.execute("UPDATE security_audit SET level='critical'")
+                db.execute("UPDATE security_audit SET level=CASE WHEN category='finance' THEN 'permanent' ELSE 'critical' END")
             report = cleanup_audit_rows(db, confirmed=args.apply and not args.reset_classification)
             print(json.dumps({k: v for k, v in report.items() if k != 'ids'}, ensure_ascii=False))
             if args.apply:
