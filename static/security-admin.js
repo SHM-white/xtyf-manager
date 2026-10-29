@@ -55,6 +55,34 @@ document.addEventListener("DOMContentLoaded", () => {
       button.disabled = false;
     }
   });
+  const categories = {
+    finance: "资金与发票", security: "登录与权限", assets: "资产与物资",
+    members: "成员与账号", tasks: "任务与项目", collaboration: "协作与通知",
+    settings: "系统设置", other: "未分类",
+  };
+  const priorities = {
+    permanent: "永久", critical: "严重", important: "重要",
+    normal: "一般", routine: "低",
+  };
+  const actionNames = {
+    login: "登录", logout: "退出登录", api_password: "修改密码",
+    api_member_reset: "重置成员密码", api_member_role: "调整成员角色",
+    api_member_toggle: "调整成员状态", export_members_csv: "导出成员",
+    "funds.create_record": "新增资金记录", "funds.update_record": "修改资金记录",
+    "funds.delete_record": "删除资金记录", "funds.review_record": "审核资金记录",
+    "funds.export_csv": "导出资金台账",
+    "security.permissions_set": "更改业务授权",
+  };
+  function displayAction(event) {
+    const name = actionNames[event.action];
+    if (name) return name;
+    const operation = String(event.action || "").split(".").pop();
+    const verbs = {create:"创建",update:"修改",delete:"删除",restore:"恢复",
+      export:"导出",upload:"上传",review:"审核",import:"导入",start:"启动",
+      confirm:"确认",save:"保存",reset:"重置",operate:"执行操作"};
+    const label = Object.entries(verbs).find(([key]) => operation.includes(key))?.[1];
+    return label ? `${categories[event.category] || "业务"} · ${label}` : (categories[event.category] || "业务") + "操作";
+  }
   async function loadAudit(reset) {
     if (auditLoading) return;
     auditLoading=true;
@@ -62,11 +90,23 @@ document.addEventListener("DOMContentLoaded", () => {
     const more = document.getElementById("audit-more");
     more.disabled = true;
     try {
-      const level = document.getElementById("audit-level")?.value || "critical";
-      const data = await api(`/api/admin/audit?level=${encodeURIComponent(level)}${!reset && nextBefore ? `&before=${nextBefore}` : ""}`);
-      const rows = data.events.map((event) => `<tr><td>${escape(event.created_at)}</td><td>${escape(event.actor_name || "未登录")} ${event.actor_id ? `#${Number(event.actor_id)}` : ""}</td><td>${escape(event.action)}<br><small>${escape(event.method)} ${escape(event.target)}</small></td><td>${escape({success: "成功", failure: "失败", partial: "部分成功", pending: "未完成"}[event.outcome] || event.outcome)} ${event.http_status || ""}</td><td><details><summary>查看摘要</summary><pre class="audit-details">${escape(event.details)}</pre></details></td></tr>`).join("");
+      const params = new URLSearchParams({
+        level: document.getElementById("audit-level")?.value || "priority",
+        category: document.getElementById("audit-category")?.value || "all",
+        outcome: document.getElementById("audit-outcome")?.value || "all",
+      });
+      if (!reset && nextBefore) params.set("before", String(nextBefore));
+      const data = await api(`/api/admin/audit?${params}`);
+      const rows = data.events.map((event) => `<tr>
+        <td>${escape(event.created_at)}</td>
+        <td>${escape(event.actor_name || "未登录")} ${event.actor_id ? `#${Number(event.actor_id)}` : ""}</td>
+        <td>${escape(categories[event.category] || "未分类")}<br><small>${escape(priorities[event.level] || "严重")}</small></td>
+        <td>${escape(displayAction(event))}<br><small>${escape(event.action)} · ${escape(event.method)} ${escape(event.target)}</small></td>
+        <td>${escape({success: "成功", failure: "失败", partial: "部分成功", pending: "未完成"}[event.outcome] || event.outcome)} ${event.http_status || ""}</td>
+        <td><details><summary>查看摘要</summary><pre class="audit-details">${escape(event.details)}</pre></details></td>
+      </tr>`).join("");
       const host = document.getElementById("audit-events");
-      if (reset) host.innerHTML = rows || '<tr><td colspan="5">暂无操作记录</td></tr>';
+      if (reset) host.innerHTML = rows || '<tr><td colspan="6">暂无操作记录</td></tr>';
       else host.insertAdjacentHTML("beforeend", rows);
       nextBefore = data.next_before;
       more.hidden = !nextBefore;
@@ -80,7 +120,9 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   let auditLoading=false;
   document.getElementById("audit-refresh").addEventListener("click", () => loadAudit(true));
-  document.getElementById("audit-level")?.addEventListener("change", () => loadAudit(true));
+  for (const id of ["audit-level", "audit-category", "audit-outcome"]) {
+    document.getElementById(id)?.addEventListener("change", () => loadAudit(true));
+  }
   document.getElementById("audit-more").addEventListener("click", () => loadAudit(false));
   loadMembers().catch((error) => { result.textContent = error.message; });
   loadAudit(true);
