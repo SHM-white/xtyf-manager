@@ -99,7 +99,7 @@ async function ready(page) { await page.locator('#task-create-panel[open][aria-b
       await page.locator('#task-create-type').selectOption('daily');await ready(page);
       const dailySubmit=page.locator('#daily-form [type=submit]');await dailySubmit.scrollIntoViewIfNeeded();const dailyBounds=await dailySubmit.boundingBox();assert.ok(dailyBounds.y+dailyBounds.height<=821);
       assert.equal(await page.locator('#daily-form').evaluate(node=>node.scrollWidth<=node.clientWidth+1),true,'daily form overflow '+width);
-      const textarea=await page.locator('#daily-form [name=detail]').evaluate(node=>({resize:getComputedStyle(node).resize,width:node.getBoundingClientRect().width,parent:node.parentElement.getBoundingClientRect().width}));assert.equal(textarea.resize,'none');assert.ok(Math.abs(textarea.width-textarea.parent)<2);
+      const textarea=await page.locator('#daily-form [name=detail]').evaluate(node=>({resize:getComputedStyle(node).resize,width:node.getBoundingClientRect().width,parent:node.parentElement.getBoundingClientRect().width}));assert.equal(textarea.resize,'vertical');assert.ok(Math.abs(textarea.width-textarea.parent)<2);
       await page.screenshot({path:path.join(output,'daily-create-'+width+'.png')});
       await page.locator('.daily-owner-groups').scrollIntoViewIfNeeded();await page.screenshot({path:path.join(output,'daily-owners-'+width+'.png')});await page.keyboard.press('Escape');
     }
