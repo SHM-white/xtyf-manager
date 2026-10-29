@@ -16,8 +16,9 @@ from common import DB_PATH, ROLE_NAMES, current_user, get_db, login_required, no
 from modules.client_address import client_address
 from modules.pwa import PUBLIC_ENDPOINTS
 from modules.request_limits import asset_request_limit
-from modules.audit_retention import (ROUTINE_ACTIONS, migrate_classification, cleanup_audit_rows,
-                                     classify_action, CATEGORIES, LEVELS)  # noqa: F401
+from modules.audit_retention import (ROUTINE_ACTIONS, migrate_classification,
+                                     classify_action, CATEGORIES, LEVELS)
+from modules.audit_retention import cleanup_audit_rows as cleanup_audit_rows  # compat re-export
 
 bp = Blueprint("security", __name__)
 PERMISSIONS = {"funds.review": "资金审核", "invoices.manage": "发票管理", "assets.manage": "资产管理"}
