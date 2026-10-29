@@ -1,6 +1,7 @@
 """Password recovery: enumeration resistance, delivery, expiry and session revocation."""
 import sqlite3
 import unittest
+from contextlib import contextmanager
 from datetime import datetime
 from uuid import uuid4
 
@@ -29,7 +30,7 @@ class PasswordRecoveryTest(unittest.TestCase):
         self.mid = created.get_json()['id']
         self.anonymous = self.app.test_client()
         # Isolate the SQLite source throttle from other tests running in one suite.
-        self.anonymous.environ_base['REMOTE_ADDR'] = '2001:db8::' + uuid4().hex[:8]
+        self.anonymous.environ_base['REMOTE_ADDR'] = '2001:db8::' + uuid4().hex[:4]
         self.generation = uuid4().hex
         with self.connection() as db:
             db.execute(
@@ -39,10 +40,18 @@ class PasswordRecoveryTest(unittest.TestCase):
     def tearDown(self):
         self.app.config['MAIL_SETTINGS'] = self.old_mail
 
+    @contextmanager
     def connection(self):
         db = sqlite3.connect(DB_PATH)
         db.row_factory = sqlite3.Row
-        return db
+        try:
+            yield db
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+        finally:
+            db.close()
 
     def request_code(self, username=None):
         return self.anonymous.post('/api/password-recovery/request', json={
