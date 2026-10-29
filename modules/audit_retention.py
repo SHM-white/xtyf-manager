@@ -80,15 +80,17 @@ def cleanup_plan(db):
         FROM security_audit a JOIN protected p ON p.id=a.id
         WHERE json_valid(a.details) AND json_type(a.details,'$.request_audit_id')='integer'
     ) SELECT id FROM protected""")}
-    has_action = 'action' in {r[1] for r in db.execute('PRAGMA table_info(security_audit)')}
+    columns = {r[1] for r in db.execute('PRAGMA table_info(security_audit)')}
+    has_action, has_category = 'action' in columns, 'category' in columns
     rows = db.execute(
         'SELECT id,level,created_at' + (',action' if has_action else '') +
-        ' FROM security_audit ORDER BY id'
+        (',category' if has_category else '') + ' FROM security_audit ORDER BY id'
     ).fetchall()
-    # Never delete financial events even if they still carry the old 'critical'
-    # classification, or a reset/older writer assigned that value.
+    # Never delete financial events, even if a legacy writer/reset assigned
+    # the wrong level. Both the stable endpoint and category act as safeguards.
     finance_ids = {r[0] for r in rows if r[1] == 'permanent' or
-                   (has_action and classify_action(r[3])[0] == 'finance')}
+                   (has_action and classify_action(r[3])[0] == 'finance') or
+                   (has_category and r[4 if has_action else 3] == 'finance')}
     protected |= finance_ids
     cutoffs = {level: (datetime.now() - timedelta(days=n)).strftime('%Y-%m-%d %H:%M:%S')
                for level, n in days.items() if n}
