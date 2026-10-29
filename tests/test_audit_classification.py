@@ -1,10 +1,18 @@
 """Audit grouping, retention and upgrade behavior (synthetic data only)."""
+import json
+import os
 import sqlite3
+import tempfile
 import unittest
+from pathlib import Path
 from contextlib import closing
 from unittest.mock import patch
 
-from modules.audit_retention import classify_action, cleanup_plan, migrate_classification
+from modules.audit_retention import (
+    classify_action, cleanup_plan, migrate_classification,
+    migrate_retention_settings, retention_policy, save_retention_days,
+    validate_retention_days,
+)
 
 
 def fake_db():
@@ -89,6 +97,68 @@ class AuditClassificationTests(unittest.TestCase):
             self.assertEqual(plan['ids'], [])
 
 
+class AuditRetentionSettingsTests(unittest.TestCase):
+    def test_file_environment_admin_precedence_and_reset(self):
+        with closing(fake_db()) as db, tempfile.TemporaryDirectory() as tmp:
+            config_path = Path(tmp) / 'audit.json'
+            config_path.write_text(json.dumps({'critical': 400, 'routine': 0}), encoding='utf-8')
+            with patch.dict(os.environ, {
+                'AUDIT_RETENTION_CONFIG': str(config_path),
+                'AUDIT_RETENTION_DAYS': '45',
+                'AUDIT_NORMAL_RETENTION_DAYS': '30',
+            }):
+                policy = retention_policy(db)
+                self.assertEqual(policy['days'], {
+                    'permanent': None, 'critical': 400, 'important': 180,
+                    'normal': 30, 'routine': 0,
+                })
+                self.assertEqual(policy['sources']['critical'], 'file')
+                self.assertEqual(policy['sources']['normal'], 'environment')
+                migrate_retention_settings(db)
+                migrate_retention_settings(db)
+                save_retention_days(db, {
+                    'critical': 0, 'important': 999, 'normal': 15, 'routine': 3,
+                })
+                policy = retention_policy(db)
+                self.assertEqual(policy['days']['permanent'], None)
+                self.assertEqual(policy['days']['critical'], 0)
+                self.assertEqual(policy['days']['important'], 999)
+                self.assertTrue(all(policy['sources'][k] == 'admin'
+                                    for k in ('critical', 'important', 'normal', 'routine')))
+                save_retention_days(db, reset=True)
+                policy = retention_policy(db)
+                self.assertEqual(policy['days']['critical'], 400)
+                self.assertEqual(policy['days']['routine'], 0)
+
+    def test_invalid_configuration_never_permits_finance_override(self):
+        for data in ({'permanent': 1}, {'routine': -1}, {'normal': 2.3},
+                     {'normal': True}, {'routine': 40000}, {'missing': 10}):
+            with self.subTest(data=data), self.assertRaises(ValueError):
+                validate_retention_days(data)
+        with closing(fake_db()) as db, tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'audit.json'
+            path.write_text('{"permanent": 0}', encoding='utf-8')
+            with patch.dict(os.environ, {'AUDIT_RETENTION_CONFIG': str(path)}):
+                with self.assertRaises(ValueError):
+                    cleanup_plan(db)
+
+    def test_zero_prevents_routine_capacity_eviction(self):
+        with closing(fake_db()) as db:
+            db.executemany(
+                'INSERT INTO security_audit(id,action,outcome,created_at) VALUES(?,?,?,?)',
+                [(1, 'workspace_settings.workspace_countdown', 'success', '2000-01-01'),
+                 (2, 'workspace_settings.workspace_countdown', 'success', '2000-01-01')])
+            migrate_classification(db)
+            with patch.dict(os.environ, {
+                'AUDIT_ROUTINE_RETENTION_DAYS': '0', 'AUDIT_MAX_ROWS': '1',
+            }):
+                self.assertEqual(cleanup_plan(db)['ids'], [])
+            with patch.dict(os.environ, {
+                'AUDIT_ROUTINE_RETENTION_DAYS': '1', 'AUDIT_MAX_ROWS': '1',
+            }):
+                self.assertEqual(cleanup_plan(db)['ids'], [1, 2])
+
+
 class AuditApiFilterTests(unittest.TestCase):
     def setUp(self):
         from test_tasks import app_module
@@ -137,6 +207,62 @@ class AuditApiFilterTests(unittest.TestCase):
         self.assertIn(self.inserted[3], ids('/api/admin/audit?level=all&category=settings'))
         for query in ('category=invalid', 'level=invalid', 'outcome=invalid'):
             self.assertEqual(self.client.get('/api/admin/audit?' + query).status_code, 400)
+
+
+class AuditAdminPolicyApiTests(unittest.TestCase):
+    def setUp(self):
+        from test_tasks import app_module
+        self.app_module = app_module
+        self.client = app_module.app.test_client()
+        login = self.client.post('/login', json={
+            'username': 'admin', 'password': 'ci-test-password-only'})
+        self.assertTrue(login.get_json()['ok'])
+        with closing(sqlite3.connect(app_module.DB_PATH)) as db:
+            migrate_retention_settings(db)
+            self.previous = db.execute(
+                'SELECT level,days FROM audit_retention_settings').fetchall()
+
+    def tearDown(self):
+        with closing(sqlite3.connect(self.app_module.DB_PATH)) as db, db:
+            db.execute('DELETE FROM audit_retention_settings')
+            db.executemany('INSERT INTO audit_retention_settings(level,days) VALUES(?,?)',
+                           self.previous)
+
+    def test_admin_edit_and_restore_cannot_touch_permanent(self):
+        url = '/api/admin/audit-retention'
+        initial = self.client.get(url)
+        self.assertEqual(initial.status_code, 200)
+        self.assertIsNone(initial.get_json()['days']['permanent'])
+        for payload in (
+            {'days': {'permanent': 1}},
+            {'days': {'critical': 20}},
+            {'days': {'critical': 1, 'important': 1, 'normal': 1, 'routine': -1}},
+            {'reset': True, 'days': {}},
+        ):
+            with self.subTest(payload=payload):
+                self.assertEqual(self.client.post(url, json=payload).status_code, 400)
+        chosen = {'critical': 0, 'important': 500, 'normal': 31, 'routine': 8}
+        response = self.client.post(url, json={'days': chosen})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()['days'], {'permanent': None, **chosen})
+        self.assertTrue(all(response.get_json()['sources'][key] == 'admin'
+                            for key in chosen))
+        # A new client reads the same persisted settings.
+        self.assertEqual(self.client.get(url).get_json()['days']['important'], 500)
+        with closing(sqlite3.connect(self.app_module.DB_PATH)) as db:
+            rows = db.execute('SELECT level,days FROM audit_retention_settings').fetchall()
+            self.assertEqual(dict(rows), chosen)
+        reset = self.client.post(url, json={'reset': True})
+        self.assertEqual(reset.status_code, 200)
+        self.assertIsNone(reset.get_json()['days']['permanent'])
+        self.assertEqual(self.client.get(url).get_json()['sources']['critical'], 'default')
+
+    def test_policy_endpoints_require_admin(self):
+        visitor = self.app_module.app.test_client()
+        self.assertNotEqual(visitor.get('/api/admin/audit-retention').status_code, 200)
+        self.assertNotEqual(visitor.post('/api/admin/audit-retention', json={
+            'days': {'critical': 1, 'important': 1, 'normal': 1, 'routine': 1},
+        }).status_code, 200)
 
 
 if __name__ == '__main__':
