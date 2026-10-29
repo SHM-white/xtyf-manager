@@ -24,7 +24,8 @@ async function main(){
     for(const url of ['/account','/tasks','/discussions','/assets','/funds/','/invoices/']){
       phase=name+' shared script '+url;await page.goto(base+url);await page.waitForLoadState('networkidle');
       assert.equal(await page.evaluate(()=>typeof window.FormControls?.refresh),'function');
-      assert.deepEqual(await page.locator('input,select,textarea').evaluateAll(fields=>fields.filter(f=>getComputedStyle(f).resize!=='none').map(f=>f.id)),[]);
+      assert.deepEqual(await page.locator('input,select').evaluateAll(fields=>fields.filter(f=>getComputedStyle(f).resize!=='none').map(f=>f.id)),[]);
+      assert.deepEqual(await page.locator('textarea').evaluateAll(fields=>fields.filter(f=>getComputedStyle(f).resize!=='vertical').map(f=>f.id||f.name)),[],url+' textareas must be vertically resizable');
     }
     for(const width of [320,768,1440]){
       await page.setViewportSize({width,height:900});
@@ -72,6 +73,45 @@ async function main(){
     assert.ok(await text.evaluate(f=>f.offsetHeight)>wide);
     await page.evaluate(()=>document.documentElement.style.fontSize='200%');await settle();
     assert.ok(await text.evaluate(f=>f.offsetWidth<=f.form.clientWidth));
+    // A height-only change, like a native resize-grip drag, must persist when
+    // editing and never change the width of the containing form or its siblings.
+    await page.evaluate(()=>{
+      document.documentElement.style.fontSize='';
+      document.getElementById('responsive-probe').style.width='min(620px,calc(100vw - 32px))';
+    });
+    await text.fill('调整大小测试');await settle();
+    const layoutBefore=await text.evaluate(f=>({
+      form:f.form.getBoundingClientRect().width,
+      dialog:f.closest('dialog').getBoundingClientRect().width,
+      neighbor:f.form.querySelector('input[type=text]').getBoundingClientRect().width,
+      textarea:f.getBoundingClientRect().width,
+    }));
+    await text.evaluate(f=>f.style.height='250px');await settle();
+    assert.ok(await text.evaluate(f=>f.getBoundingClientRect().height>=245),'user-selected height not applied');
+    await text.fill('修改后仍保持手动高度');await settle();
+    assert.ok(await text.evaluate(f=>f.getBoundingClientRect().height>=245),'auto fit undid manual height');
+    const layoutAfter=await text.evaluate(f=>({
+      form:f.form.getBoundingClientRect().width,
+      dialog:f.closest('dialog').getBoundingClientRect().width,
+      neighbor:f.form.querySelector('input[type=text]').getBoundingClientRect().width,
+      textarea:f.getBoundingClientRect().width,
+    }));
+    for(const key of Object.keys(layoutBefore))assert.ok(Math.abs(layoutAfter[key]-layoutBefore[key])<2,key+' was distorted by resizing');
+    // The textarea remains bounded to its cell at mobile, tablet, and desktop widths.
+    for(const width of [320,768,1440]){
+      await page.setViewportSize({width,height:900});await settle();
+      const sizing=await text.evaluate(f=>{
+        const a=f.getBoundingClientRect(),form=f.form.getBoundingClientRect(),dialog=f.closest('dialog').getBoundingClientRect();
+        return {resize:getComputedStyle(f).resize,fieldRight:a.right,formRight:form.right,dialogRight:dialog.right,height:a.height,formOverflow:f.form.scrollWidth-f.form.clientWidth};
+      });
+      assert.equal(sizing.resize,'vertical');
+      assert.ok(sizing.fieldRight<=sizing.formRight+1,'textarea escaped form at '+width);
+      assert.ok(sizing.formRight<=sizing.dialogRight+1,'form escaped dialog at '+width);
+      assert.ok(sizing.formOverflow<=1,'neighboring controls reflowed horizontally at '+width);
+      assert.ok(sizing.height>=245,'manual height lost on viewport change at '+width);
+    }
+    await page.evaluate(()=>document.querySelector('#responsive-probe form').reset());await settle();
+    assert.ok(await text.evaluate(f=>f.getBoundingClientRect().height<160),'form reset must restore automatic height');
     const scans=await page.evaluate(async()=>{
       const query=document.querySelectorAll.bind(document);let scans=0;
       document.querySelectorAll=selector=>{if(selector==='textarea')scans++;return query(selector);};
@@ -80,7 +120,7 @@ async function main(){
       tip.remove();delete document.querySelectorAll;return scans;
     });assert.equal(scans,0,'unrelated mutations must not scan all textareas');
     await page.screenshot({path:path.join(output,name+'.png')});
-    assert.deepEqual(errors,[]);passed.push(name+': six page shells, 320/768/1440 widths, grow/shrink/cap, reset, prefill, container resize, font zoom');
+    assert.deepEqual(errors,[]);passed.push(name+': six page shells, 320/768/1440 widths, grow/shrink/cap, manual resize preserved, no horizontal reflow, reset, prefill, container resize, font zoom');
     await browser.close();browser=null;
   }
   fs.writeFileSync(path.join(output,'result.json'),JSON.stringify({ok:true,passed,nativeRuntime:false},null,2));console.log(JSON.stringify({ok:true,passed}));
