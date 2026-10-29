@@ -32,7 +32,8 @@ async function assertSidebarUnreadBadge(page, url) {
    radius:parseFloat(style.borderRadius),fontSize:style.fontSize,
    width:rect.width,height:rect.height,padding:parseFloat(style.paddingLeft)};
  });
- assert.equal(metrics.display,'inline-flex',`${url} unread badge display`);
+ // CSS blockifies inline-flex on flex items, so getComputedStyle reports flex.
+ assert.equal(metrics.display,'flex',`${url} unread badge display`);
  assert.equal(metrics.background,'rgb(227, 76, 95)',`${url} unread badge background`);
  assert.equal(metrics.color,'rgb(255, 255, 255)',`${url} unread badge foreground`);
  assert.equal(metrics.fontSize,'11px',`${url} unread badge font size`);
