@@ -55,6 +55,48 @@ document.addEventListener("DOMContentLoaded", () => {
       button.disabled = false;
     }
   });
+  const retentionLevels = ["critical", "important", "normal", "routine"];
+  const retentionNames = {critical: "严重", important: "重要", normal: "一般", routine: "低"};
+  const retentionSources = {admin: "管理员设置", file: "配置文件", environment: "环境变量", default: "系统默认"};
+  const retentionForm = document.getElementById("audit-retention-form");
+  const retentionResult = document.getElementById("audit-retention-result");
+  function showRetention(policy) {
+    for (const level of retentionLevels) retentionForm.elements[level].value = policy.days[level];
+    document.getElementById("audit-retention-source").textContent =
+      retentionLevels.map((level) => `${retentionNames[level]}：${retentionSources[policy.sources[level]] || "未知来源"}`).join(" · ");
+  }
+  async function loadRetention() {
+    showRetention(await api("/api/admin/audit-retention"));
+  }
+  async function changeRetention(payload) {
+    const save = document.getElementById("audit-retention-save");
+    const reset = document.getElementById("audit-retention-reset");
+    save.disabled = true;
+    reset.disabled = true;
+    retentionResult.textContent = "正在保存…";
+    try {
+      showRetention(await api("/api/admin/audit-retention", payload));
+      retentionResult.textContent = "保留策略已保存；不会自动删除记录，人工清理前请先备份并预览。";
+      await loadAudit(true);
+    } catch (error) {
+      retentionResult.textContent = error.message;
+    } finally {
+      save.disabled = false;
+      reset.disabled = false;
+    }
+  }
+  retentionForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (!retentionForm.reportValidity()) return;
+    const days = {};
+    for (const level of retentionLevels) days[level] = Number(retentionForm.elements[level].value);
+    changeRetention({days});
+  });
+  document.getElementById("audit-retention-reset").addEventListener("click", () => {
+    changeRetention({reset: true});
+  });
+  loadRetention().catch((error) => { retentionResult.textContent = error.message; });
+
   const categories = {
     finance: "资金与发票", security: "登录与权限", assets: "资产与物资",
     members: "成员与账号", tasks: "任务与项目", collaboration: "协作与通知",
