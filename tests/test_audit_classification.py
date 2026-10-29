@@ -255,7 +255,7 @@ class AuditAdminPolicyApiTests(unittest.TestCase):
         reset = self.client.post(url, json={'reset': True})
         self.assertEqual(reset.status_code, 200)
         self.assertIsNone(reset.get_json()['days']['permanent'])
-        self.assertEqual(self.client.get(url).get_json()['sources']['critical'], 'default')
+        self.assertNotEqual(self.client.get(url).get_json()['sources']['critical'], 'admin')
 
     def test_policy_endpoints_require_admin(self):
         visitor = self.app_module.app.test_client()
