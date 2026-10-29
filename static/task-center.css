@@ -107,17 +107,37 @@ body.task-create-open { overflow:hidden; }
 :is(.task,.ws-task-row,.timeline-row)[class*="task-tone-"]:hover {
   background:color-mix(in srgb,var(--card) 90%,var(--task-accent));
 }
-.task.task-tone-blocked, .task.task-tone-blocked:hover {
+/* Strongest issue gets the full frame on every task surface, including compact rows. */
+:is(.task,.ws-task-row,.timeline-row).task-tone-blocked,
+:is(.task,.ws-task-row,.timeline-row).task-tone-blocked:hover {
   border:2px solid var(--task-accent);
   border-inline-start-width:5px;
 }
-.timeline-row[class*="task-tone-"] { box-shadow:none; }
-:where(.task,.ws-task-row,.timeline-row).task-tone-due-soon {
-  animation:task-due-attention 3s ease-in-out infinite;
+/* An understated shadow pulse communicates urgency without moving or resizing cards. */
+.task-tone-blocked {
+  --task-breathe-duration:3.2s;
+  --task-breathe-spread:3px;
+  --task-breathe-opacity:23%;
 }
-@keyframes task-due-attention {
-  0%,100% { box-shadow:inset 0 0 0 0 transparent; }
-  50% { box-shadow:inset 0 0 0 2px color-mix(in srgb,var(--task-accent) 45%,transparent); }
+.task-tone-overdue {
+  --task-breathe-duration:3.8s;
+  --task-breathe-spread:2.5px;
+  --task-breathe-opacity:18%;
+}
+.task-tone-due-soon {
+  --task-breathe-duration:4.6s;
+  --task-breathe-spread:2px;
+  --task-breathe-opacity:14%;
+}
+:where(.task,.ws-task-row,.timeline-row):is(.task-tone-blocked,.task-tone-overdue,.task-tone-due-soon) {
+  animation:task-state-breathe var(--task-breathe-duration) ease-in-out infinite;
+}
+@keyframes task-state-breathe {
+  0%,100% { box-shadow:0 0 0 0 transparent; }
+  50% {
+    box-shadow:0 0 0 var(--task-breathe-spread)
+      color-mix(in srgb,var(--task-accent) var(--task-breathe-opacity),transparent);
+  }
 }
 .badge.task-dependency {
   background:color-mix(in srgb,var(--card) 84%,#7652ac);
@@ -131,7 +151,9 @@ body.task-create-open { overflow:hidden; }
 .task-tone-legend i { display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--task-accent);flex:none; }
 .ws-dashboard-card .task-tone-legend { margin:10px 0 8px; }
 @media (prefers-reduced-motion:reduce) {
-  :where(.task,.ws-task-row,.timeline-row).task-tone-due-soon { animation:none; }
+  :where(.task,.ws-task-row,.timeline-row):is(.task-tone-blocked,.task-tone-overdue,.task-tone-due-soon) {
+    animation:none;
+  }
 }
 
 .badge.task-deadline-overdue { background:color-mix(in srgb,var(--card) 84%,var(--orange));color:var(--orange-text,var(--orange)); }
