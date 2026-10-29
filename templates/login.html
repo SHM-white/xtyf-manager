@@ -35,7 +35,7 @@
       <label>登录用户名
         <input name="recovery_username" maxlength="64" autocomplete="username" required placeholder="请输入登录用户名">
       </label>
-      <button type="submit" class="btn primary block">发送验证码</button>
+      <button id="recovery-request-submit" class="btn primary block">发送验证码</button>
     </form>
     <form id="recovery-confirm-form" class="hidden">
       <label>邮箱中的六位验证码
@@ -47,7 +47,7 @@
       <label>确认新密码
         <input name="confirm" type="password" minlength="8" maxlength="1024" autocomplete="new-password" required>
       </label>
-      <button type="submit" class="btn primary block">验证并重置密码</button>
+      <button id="recovery-confirm-submit" class="btn primary block">验证并重置密码</button>
       <button type="button" id="recovery-retry" class="btn ghost block">重新申请验证码</button>
     </form>
     <p id="recovery-message" role="status" aria-live="polite"></p>
@@ -145,7 +145,7 @@ document.getElementById('recovery-retry').addEventListener('click', () => {
 });
 recoveryRequestForm.addEventListener('submit', async (event) => {
   event.preventDefault();
-  const button = recoveryRequestForm.querySelector('[type=submit]');
+  const button = document.getElementById('recovery-request-submit');
   recoveryUsername = new FormData(recoveryRequestForm).get('recovery_username').trim();
   button.disabled = true;
   try {
@@ -168,7 +168,7 @@ recoveryConfirmForm.addEventListener('submit', async (event) => {
     showRecoveryMessage('两次输入的新密码不一致', true);
     return;
   }
-  const button = recoveryConfirmForm.querySelector('[type=submit]');
+  const button = document.getElementById('recovery-confirm-submit');
   button.disabled = true;
   try {
     const {data} = await recoveryPost('/api/password-recovery/confirm', {
