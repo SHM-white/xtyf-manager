@@ -16,15 +16,24 @@
     const cap=Math.max(number(css.minHeight),Math.min(number(css.getPropertyValue('--textarea-max-height'),360),viewport*.45));
     const minimum=Math.min(cap,Math.max(number(css.minHeight),Math.max(1,field.rows)*line+padding+border));
     const key=[field.value,width,minimum,cap,css.font,css.letterSpacing,css.wordBreak,field.wrap].join('\u0000');
-    if(state.get(field)?.key===key)return;
+    const previous=state.get(field);
+    if(previous?.key===key)return;
+    // Auto-fit remains capped, but a user can drag a textarea taller than that
+    // cap (up to a viewport-safe limit). Do not undo a manual height on input.
+    const resizeCap=Math.max(cap,Math.min(number(css.getPropertyValue('--textarea-resize-max-height'),800),viewport*.75));
+    field.style.maxHeight=resizeCap+'px';
+    if(previous?.manual){
+      field.style.overflowY='auto';
+      state.set(field,{...previous,key,width,height:field.getBoundingClientRect().height});
+      return;
+    }
     const scroll=field.scrollTop;
-    field.style.maxHeight=cap+'px';
     field.style.height='auto';
     const needed=Math.max(minimum,field.scrollHeight+border);
     field.style.height=Math.min(needed,cap)+'px';
     field.style.overflowY=needed>cap+1?'auto':'hidden';
     field.scrollTop=scroll;
-    state.set(field,{key,width});
+    state.set(field,{key,width,height:field.getBoundingClientRect().height,manual:false});
   }
   const dirty=new Set();
   function fields(root){
@@ -48,7 +57,18 @@
     dirty.clear();
   }
   const observer=typeof ResizeObserver==='function'?new ResizeObserver(entries=>{
-    for(const {target} of entries)if(Math.abs(target.getBoundingClientRect().width-(state.get(target)?.width||0))>.5)refresh(target);
+    for(const {target} of entries){
+      const previous=state.get(target);
+      if(!previous)continue;
+      const rect=target.getBoundingClientRect();
+      if(Math.abs(rect.width-previous.width)>.5){refresh(target);continue;}
+      // A height-only change outside fit() is a native drag resize. Ignore
+      // our own height writes because fit() records their resulting height.
+      if(Math.abs(rect.height-previous.height)>1){
+        state.set(target,{...previous,manual:true,height:rect.height});
+        target.style.overflowY='auto';
+      }
+    }
   }):null;
   const mutations=new MutationObserver(records=>{
     for(const record of records){
@@ -70,7 +90,15 @@
     refresh();
   }
   document.addEventListener('input',event=>{if(event.target.matches('textarea'))refresh(event.target);});
-  document.addEventListener('reset',event=>refresh(event.target),true);
+  document.addEventListener('reset',event=>{
+    // Reset should restore automatic sizing, including after a manual drag.
+    for(const field of fields(event.target)){
+      state.delete(field);
+      field.style.height='';
+      field.style.overflowY='';
+    }
+    refresh(event.target);
+  },true);
   window.addEventListener('resize',()=>refresh());
   window.visualViewport?.addEventListener('resize',()=>refresh());
   document.fonts?.ready.then(()=>refresh());
