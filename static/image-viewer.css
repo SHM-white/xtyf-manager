@@ -1,0 +1,17 @@
+/* Global image viewer: deliberately square, flat controls and independent of page palettes. */
+.xt-image-viewer{position:fixed;inset:0;width:100vw;height:100dvh;max-width:none;max-height:none;margin:0;padding:0;border:0;background:#121519;color:#f5f6f8;z-index:30000;box-sizing:border-box;overflow:hidden}
+.xt-image-viewer::backdrop{background:rgba(0,0,0,.82)}
+.xt-iv-shell{height:100%;display:flex;flex-direction:column;min-height:0}
+.xt-iv-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:54px;box-sizing:border-box;padding:8px 14px;border-bottom:1px solid #41454c;background:#20252a}
+.xt-iv-name{font-size:13px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;min-width:0;flex:1}
+.xt-iv-tools{display:flex;align-items:center;gap:5px;flex-wrap:wrap;justify-content:flex-end}
+.xt-image-viewer .xt-iv-tools button{min-height:36px;min-width:36px;box-sizing:border-box;padding:6px 9px;border:1px solid #5b626b;border-radius:0;background:#303740;color:#fff;font:inherit;cursor:pointer}
+.xt-image-viewer .xt-iv-tools button:hover{background:#485563}
+.xt-image-viewer .xt-iv-tools button:focus-visible{outline:2px solid #a2d4ff;outline-offset:2px}
+.xt-iv-zoom{min-width:44px;text-align:center;font-size:12px;font-variant-numeric:tabular-nums}
+.xt-iv-stage{flex:1;min-height:0;display:grid;place-items:center;overflow:hidden;touch-action:none;cursor:grab;padding:10px}
+.xt-iv-stage:active{cursor:grabbing}
+.xt-iv-stage img{display:block;max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;transform-origin:center center;user-select:none;-webkit-user-drag:none}
+.xt-iv-stage img[hidden]{display:none}
+.xt-iv-status{margin:0;padding:9px 14px;min-height:35px;box-sizing:border-box;background:#20252a;border-top:1px solid #41454c;color:#d5dbe2;text-align:center;font-size:12px}
+@media(max-width:700px){.xt-iv-bar{flex-direction:column;align-items:stretch;padding:8px;gap:7px}.xt-iv-tools{justify-content:center}.xt-image-viewer .xt-iv-tools button{min-height:42px}.xt-iv-name{text-align:center}.xt-iv-status{font-size:11px}}

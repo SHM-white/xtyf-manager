@@ -101,7 +101,7 @@
     if(!box)return;
     const data=await request(`/api/daily-projects/${project.id}/groups/${stage}/progress`+(before?'?before='+before:''));
     if(current?.id!==project.id || !box.isConnected)return;
-    const rows=data.updates.map(row=>`<article class="daily-update"><strong>${row.progress}% · ${escape(row.actor_name)}</strong><time>${escape(row.created_at)}</time><p class="daily-note">${escape(row.note||'无备注')}</p><div class="daily-images">${row.images.map(image=>`<a href="${escape(image.url)}" target="_blank" rel="noopener"><img src="${escape(image.url)}" alt="${escape(image.original_name)}" loading="lazy"></a>`).join('')}</div></article>`).join('');
+    const rows=data.updates.map(row=>`<article class="daily-update"><strong>${row.progress}% · ${escape(row.actor_name)}</strong><time>${escape(row.created_at)}</time><p class="daily-note">${escape(row.note||'无备注')}</p><div class="daily-images">${row.images.map(image=>`<a href="${escape(image.url)}" data-image-preview data-image-name="${escape(image.original_name)}"><img src="${escape(image.url)}" alt="${escape(image.original_name)}" loading="lazy"></a>`).join('')}</div></article>`).join('');
     if(before)box.querySelector('[data-more]')?.remove();else box.innerHTML='';
     box.insertAdjacentHTML('beforeend',rows || (!before?'<p class="muted">还没有进度记录</p>':''));
     if(data.next_before)box.insertAdjacentHTML('beforeend',`<button class="btn" type="button" data-more="${data.next_before}" data-stage="${stage}">加载更早记录</button>`);

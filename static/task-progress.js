@@ -59,6 +59,6 @@ async function loadTaskProgress(task, generation) {
   box.innerHTML = (result.updates || []).map((entry) => `<article class="progress-entry">
     <div class="progress-entry-head"><strong>${Number(entry.progress)}% · ${esc(entry.actor_name)}</strong><time>${esc(entry.created_at)}</time></div>
     ${entry.note ? `<p class="progress-entry-note">${esc(entry.note)}</p>` : ""}
-    ${(entry.images || []).length ? `<div class="progress-entry-images">${entry.images.map((file) => `<a href="${esc(file.url)}" target="_blank" rel="noopener noreferrer" aria-label="查看进度图片"><img src="${esc(file.url)}" alt="${esc(file.name)}" loading="lazy"></a>`).join("")}</div>` : ""}
+    ${(entry.images || []).length ? `<div class="progress-entry-images">${entry.images.map((file) => `<a href="${esc(file.url)}" data-image-preview data-image-name="${esc(file.name)}" aria-label="查看进度图片"><img src="${esc(file.url)}" alt="${esc(file.name)}" loading="lazy"></a>`).join("")}</div>` : ""}
   </article>`).join("") || '<p class="empty">还没有进度记录，可以提交第一条。</p>';
 }

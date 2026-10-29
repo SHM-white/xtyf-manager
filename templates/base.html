@@ -10,6 +10,7 @@
   <title>{% block title %}工作台{% endblock %} | 巡天御风管理系统</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='ui.css') }}">
+  {% if me %}<link rel="stylesheet" href="{{ url_for('static', filename='image-viewer.css') }}">{% endif %}
   <link rel="stylesheet" href="{{ url_for('static', filename='workspace.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='collaboration.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='apple.css') }}">
@@ -42,7 +43,7 @@
   <div class="modal-mask hidden" id="modal-mask">
     <div class="modal" id="modal" role="dialog" aria-modal="true" aria-label="任务操作窗口"></div>
   </div>
-  {% if me %}<script src="{{ url_for('static', filename='workspace.js') }}"></script>{% endif %}
+  {% if me %}<script src="{{ url_for('static', filename='workspace.js') }}"></script><script src="{{ url_for('static', filename='image-viewer.js') }}"></script>{% endif %}
   {% if me and not me.must_change_password %}<script src="{{ url_for('static', filename='site-updates.js') }}"></script>{% endif %}
   {% if me %}<script src="{{ url_for('static', filename='item-topics.js') }}"></script>{% endif %}
   {% block scripts %}{% endblock %}

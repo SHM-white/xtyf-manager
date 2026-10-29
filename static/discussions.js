@@ -122,7 +122,8 @@
     const attachments=message.withdrawn?[]:message.attachments||[];
     article.innerHTML=`<div class="collab-message-head" data-read-marker="${message.id}"><strong>${safe(message.author_name)}</strong><time datetime="${safe(message.created_at)}">${safe(date(message.created_at))}</time>${message.can_withdraw&&!message.withdrawn?`<button class="btn" type="button" data-withdraw-message="${message.id}">撤回</button>`:''}</div><p class="collab-message-body">${message.withdrawn?'这条消息已撤回':safe(message.body||'')}</p>${attachments.length?'<div class="collab-attachments">'+attachments.map(file=>{
       const url=attachmentURL(file.download_url),thumbnail=file.thumbnail_url?attachmentURL(file.thumbnail_url):'';
-      return url?`<a class="collab-attachment" href="${safe(url)}" download="${safe(file.name)}">${thumbnail?`<img src="${safe(thumbnail)}" alt="${safe(file.name)}的缩略图" loading="lazy">`:''}<span>${safe(file.name)}<small>${size(Number(file.size))} · 下载附件</small></span></a>`:'';
+      const preview = !!thumbnail || /\.(?:png|jpe?g|webp|gif|bmp|avif)$/i.test(file.name || '');
+      return url?`<a class="collab-attachment" href="${safe(url)}" download="${safe(file.name)}"${preview?` data-image-preview data-image-name="${safe(file.name)}"`:''}>${thumbnail?`<img src="${safe(thumbnail)}" alt="${safe(file.name)}的缩略图" loading="lazy">`:''}<span>${safe(file.name)}<small>${size(Number(file.size))} · ${preview?'查看图片':'下载附件'}</small></span></a>`:'';
     }).join('')+'</div>':''}`;
     return article;
   }
