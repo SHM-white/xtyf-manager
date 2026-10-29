@@ -90,19 +90,6 @@ body.modal-open{overflow:hidden}.modal{max-width:880px}.task-settings{margin-top
 }
 
 
-/* Both task-center cards and dashboard entries breathe red when 0–3 days remain. */
-@keyframes task-due-breathe {
-  0%,100% {box-shadow:0 0 0 0 rgba(211,52,74,.08)}
-  50% {box-shadow:0 0 0 3px rgba(211,52,74,.2),0 0 18px rgba(211,52,74,.18)}
-}
-.task.is-due-soon,.ws-task-row.is-due-soon {
-  border:1px solid #d3344a;
-  animation:task-due-breathe 2.4s ease-in-out infinite;
-}
-@media(prefers-reduced-motion:reduce){
-  .task.is-due-soon,.ws-task-row.is-due-soon{animation:none}
-}
-
 /* Local collaboration uses the active palette; content never supplies markup. */
 .panel.collab-hub { display:grid; grid-template-columns:minmax(230px,.72fr) minmax(0,1.65fr); padding:0 !important; overflow:hidden; min-height:560px; height:min(780px,calc(100dvh - 264px)); }
 .collab-hub [hidden], .collab-topic-dialog [hidden] { display:none !important; }
