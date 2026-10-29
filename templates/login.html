@@ -33,7 +33,7 @@
     <p class="sub">仅支持已在账户设置中验证邮箱的账号。未绑定邮箱请联系管理员重置密码。</p>
     <form id="recovery-request-form">
       <label>登录用户名
-        <input name="username" maxlength="64" autocomplete="username" required placeholder="请输入登录用户名">
+        <input name="recovery_username" maxlength="64" autocomplete="username" required placeholder="请输入登录用户名">
       </label>
       <button type="submit" class="btn primary block">发送验证码</button>
     </form>
@@ -117,8 +117,8 @@ function toggleRecovery(open) {
   loginForm.classList.toggle('hidden', open);
   recoveryPanel.classList.toggle('hidden', !open);
   if (open) {
-    recoveryRequestForm.querySelector('[name=username]').value = loginForm.querySelector('[name=username]').value;
-    recoveryRequestForm.querySelector('[name=username]').focus();
+    recoveryRequestForm.querySelector('[name=recovery_username]').value = loginForm.querySelector('[name=username]').value;
+    recoveryRequestForm.querySelector('[name=recovery_username]').focus();
   } else {
     recoveryRequestForm.classList.remove('hidden');
     recoveryConfirmForm.classList.add('hidden');
@@ -140,13 +140,13 @@ document.getElementById('back-to-login').addEventListener('click', () => toggleR
 document.getElementById('recovery-retry').addEventListener('click', () => {
   recoveryConfirmForm.classList.add('hidden');
   recoveryRequestForm.classList.remove('hidden');
-  recoveryRequestForm.querySelector('[name=username]').value = recoveryUsername;
+  recoveryRequestForm.querySelector('[name=recovery_username]').value = recoveryUsername;
   showRecoveryMessage('');
 });
 recoveryRequestForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   const button = recoveryRequestForm.querySelector('[type=submit]');
-  recoveryUsername = new FormData(recoveryRequestForm).get('username').trim();
+  recoveryUsername = new FormData(recoveryRequestForm).get('recovery_username').trim();
   button.disabled = true;
   try {
     const {data} = await recoveryPost('/api/password-recovery/request', {username: recoveryUsername});
