@@ -89,6 +89,32 @@ function isOverdue(task) {
 function isFinishedTask(task) {
   return task.status === "已完成" || task.status === "已取消";
 }
+// A single presentation priority applies to the board, dashboard, tree and timeline.
+// Secondary deadline/dependency flags remain visible as labels, even for blocked tasks.
+function taskHighlightTone(task) {
+  if (task.status === "已完成") return "completed";
+  if (task.status === "已取消") return "cancelled";
+  if (task.status === "阻塞") return "blocked";
+  if (isOverdue(task)) return "overdue";
+  if (isDueSoon(task)) return "due-soon";
+  if (Array.isArray(task.dependency_warnings) && task.dependency_warnings.length) return "dependency";
+  return task.status === "进行中" ? "in-progress" : "not-started";
+}
+function taskHighlightClasses(task) {
+  return [
+    `task-tone-${taskHighlightTone(task)}`,
+    task.status === "阻塞" ? "is-blocked" : "",
+    isOverdue(task) ? "overdue is-overdue" : "",
+    isDueSoon(task) ? "is-due-soon" : "",
+    !isFinishedTask(task) && task.dependency_warnings?.length ? "has-warning" : "",
+  ].filter(Boolean).join(" ");
+}
+function taskAttentionBadge(task, compact = false) {
+  if (isOverdue(task)) return badge(compact ? "逾期" : daysLeftText(task), "orange");
+  if (isDueSoon(task)) return badge(compact ? (task.days_left === 0 ? "今日" : "临期") : daysLeftText(task), "orange");
+  if (!isFinishedTask(task) && task.dependency_warnings?.length) return badge(compact ? "依赖" : "依赖提醒", "task-dependency");
+  return "";
+}
 // Capped urgency scores: ownership 28, deadline 44, priority 20, state 8 (max 100).
 function taskResponsibilityWeight(task, memberId = null, teamTaskWeight = 0) {
   const id = Number(memberId);
