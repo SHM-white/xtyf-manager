@@ -89,5 +89,55 @@ class AuditClassificationTests(unittest.TestCase):
             self.assertEqual(plan['ids'], [])
 
 
+class AuditApiFilterTests(unittest.TestCase):
+    def setUp(self):
+        from test_tasks import app_module
+        self.app_module = app_module
+        self.client = app_module.app.test_client()
+        response = self.client.post('/login', json={
+            'username': 'admin', 'password': 'ci-test-password-only'})
+        self.assertTrue(response.get_json()['ok'])
+        self.inserted = []
+        with closing(sqlite3.connect(app_module.DB_PATH)) as db, db:
+            for category, level, outcome in [
+                ('finance', 'permanent', 'success'),
+                ('assets', 'important', 'failure'),
+                ('tasks', 'normal', 'success'),
+                ('settings', 'routine', 'success'),
+            ]:
+                identifier = db.execute(
+                    """INSERT INTO security_audit
+                       (action,method,target,details,outcome,created_at,category,level)
+                       VALUES(?,?,?,?,?,?,?,?)""",
+                    ('test.filter.' + category, 'POST', '/test', '{}', outcome,
+                     '2999-01-01 00:00:00', category, level)
+                ).lastrowid
+                self.inserted.append(identifier)
+
+    def tearDown(self):
+        with closing(sqlite3.connect(self.app_module.DB_PATH)) as db, db:
+            db.executemany('DELETE FROM security_audit WHERE id=?',
+                           ((identifier,) for identifier in self.inserted))
+
+    def test_default_and_combined_filters(self):
+        def ids(path):
+            response = self.client.get(path)
+            self.assertEqual(response.status_code, 200)
+            return {row['id'] for row in response.get_json()['events']}
+
+        priority = ids('/api/admin/audit')
+        self.assertIn(self.inserted[0], priority)
+        self.assertIn(self.inserted[1], priority)
+        self.assertNotIn(self.inserted[2], priority)
+        self.assertNotIn(self.inserted[3], priority)
+        self.assertIn(self.inserted[0], ids('/api/admin/audit?category=finance&level=permanent'))
+        self.assertNotIn(self.inserted[1], ids('/api/admin/audit?category=finance&level=permanent'))
+        self.assertIn(self.inserted[1], ids('/api/admin/audit?category=assets&level=important&outcome=failure'))
+        self.assertNotIn(self.inserted[0], ids('/api/admin/audit?category=assets&level=important&outcome=failure'))
+        self.assertIn(self.inserted[3], ids('/api/admin/audit?level=all&category=settings'))
+        for query in ('category=invalid', 'level=invalid', 'outcome=invalid'):
+            self.assertEqual(self.client.get('/api/admin/audit?' + query).status_code, 400)
+
+
 if __name__ == '__main__':
     unittest.main()
