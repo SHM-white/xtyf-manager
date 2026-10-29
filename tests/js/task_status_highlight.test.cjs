@@ -98,7 +98,7 @@ test("exceptional states breathe at distinct strengths while routine tasks stay 
     ["due-soon", "4.6s", "14%"],
   ];
   for (const [name, duration, opacity] of options) {
-    const selector = `\.task-tone-${name} {`;
+    const selector = `.task-tone-${name} {\n  --task-breathe-duration:`;
     const start = css.indexOf(selector);
     assert.notEqual(start, -1, `missing breathing variables for ${name}`);
     const declaration = css.slice(start, css.indexOf("}", start));
