@@ -17,7 +17,8 @@ from modules.client_address import client_address
 from modules.pwa import PUBLIC_ENDPOINTS
 from modules.request_limits import asset_request_limit
 from modules.audit_retention import (ROUTINE_ACTIONS, migrate_classification,
-                                     classify_action, CATEGORIES, LEVELS)
+                                     migrate_retention_settings, retention_policy,
+                                     save_retention_days, classify_action, CATEGORIES, LEVELS)
 from modules.audit_retention import cleanup_audit_rows as cleanup_audit_rows  # compat re-export
 
 bp = Blueprint("security", __name__)
@@ -100,6 +101,7 @@ def migrate_security(db):
     db.execute("BEGIN IMMEDIATE")
     try:
         migrate_classification(db)
+        migrate_retention_settings(db)
         cols = {row[1] for row in db.execute("PRAGMA table_info(members)")}
         if "must_change_password" not in cols:
             db.execute("ALTER TABLE members ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0")
@@ -203,12 +205,22 @@ def audit_background_finish(audit_id, outcome, result, db=None):
                 return audit_background_finish(audit_id, outcome, result, db=connection)
         finally:
             connection.close()
-    prior = db.execute("SELECT action,details FROM security_audit WHERE id=?", (audit_id,)).fetchone()
-    details = json.loads(prior[1]) if prior else {}
+    # Legacy/synthetic job databases sometimes only have details/outcome.
+    # The production schema has action + category + level, but finalization
+    # must remain compatible with the historical minimal audit contract.
+    columns = {r[1] for r in db.execute("PRAGMA table_info(security_audit)")}
+    has_classification = {'action', 'category', 'level'} <= columns
+    fields = 'action,details' if has_classification else 'details'
+    prior = db.execute(f"SELECT {fields} FROM security_audit WHERE id=?", (audit_id,)).fetchone()
+    details = json.loads(prior[1 if has_classification else 0]) if prior else {}
     details["result"] = result
-    category, level = classify_action(prior[0] if prior else '', outcome)
-    db.execute("UPDATE security_audit SET outcome=?,details=?,finished_at=?,category=?,level=? WHERE id=?",
-               (outcome, json.dumps(details, ensure_ascii=False), now_str(), category, level, audit_id))
+    if has_classification:
+        category, level = classify_action(prior[0] if prior else '', outcome)
+        db.execute("UPDATE security_audit SET outcome=?,details=?,finished_at=?,category=?,level=? WHERE id=?",
+                   (outcome, json.dumps(details, ensure_ascii=False), now_str(), category, level, audit_id))
+    else:
+        db.execute("UPDATE security_audit SET outcome=?,details=?,finished_at=? WHERE id=?",
+                   (outcome, json.dumps(details, ensure_ascii=False), now_str(), audit_id))
 
 
 def init_security(app):
@@ -377,6 +389,45 @@ def permissions_set(member_id):
                    [(member_id, p, current_user()["id"], now_str()) for p in values])
     db.commit()
     return jsonify(ok=True)
+
+
+@bp.route("/api/admin/audit-retention", methods=["GET", "POST"])
+@admin_required
+def audit_retention_settings():
+    db = get_db()
+    if request.method == 'GET':
+        return jsonify(ok=True, **retention_policy(db))
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify(ok=False, error='配置必须是 JSON 对象'), 400
+    try:
+        if set(data) == {'reset'} and data['reset'] is True:
+            replacement, resetting = None, True
+        elif set(data) == {'days'}:
+            replacement, resetting = data['days'], False
+        else:
+            raise ValueError('仅支持 days（四个可配置级别）或 reset=true')
+        # Validate all parameters before starting any writes.
+        if not resetting:
+            from modules.audit_retention import validate_retention_days
+            replacement = validate_retention_days(replacement, exact=True)
+        previous = retention_policy(db)['days']
+        db.execute("BEGIN IMMEDIATE")
+        save_retention_days(db, replacement, reset=resetting)
+        current = retention_policy(db)
+        db.commit()
+    except ValueError as exc:
+        db.rollback()
+        return jsonify(ok=False, error=str(exc)), 400
+    except Exception:
+        db.rollback()
+        raise
+    # The configuration change itself is a high-priority security audit.
+    if hasattr(g, 'audit_details'):
+        g.audit_details['retention_policy_change'] = {
+            'before': previous, 'after': current['days'], 'reset': resetting,
+        }
+    return jsonify(ok=True, **current)
 
 
 @bp.get("/api/admin/audit")
