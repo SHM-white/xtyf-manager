@@ -62,6 +62,17 @@ CREATE TABLE IF NOT EXISTS mail_jobs (
  finished_at REAL, error TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS mail_jobs_due ON mail_jobs(state,next_at);
+CREATE TABLE IF NOT EXISTS password_recovery (
+  member_id INTEGER PRIMARY KEY REFERENCES members(id),
+  nonce TEXT NOT NULL, email_generation TEXT NOT NULL,
+  session_version INTEGER NOT NULL,
+  requested_at REAL NOT NULL, expires_at REAL NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS password_recovery_limits (
+  source_key TEXT PRIMARY KEY, window_start REAL NOT NULL, requests INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS password_recovery_limits_window ON password_recovery_limits(window_start);
 """
 
 
