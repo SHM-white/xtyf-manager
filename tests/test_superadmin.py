@@ -13,6 +13,7 @@ class SuperadminTests(unittest.TestCase):
         self.owner = app_module.app.test_client()
         self.owner.post('/login', json={'username': 'admin', 'password': 'ci-test-password-only'})
         username = 'super_' + uuid4().hex[:12]
+        self.username = username
         self.mid = self.owner.post('/api/member', json={'name': username, 'username': username, 'password': 'synthetic-password', 'role': 'admin'}).get_json()['id']
         self.client = app_module.app.test_client()
         self.client.post('/login', json={'username': username, 'password': 'synthetic-password'})
@@ -33,7 +34,20 @@ class SuperadminTests(unittest.TestCase):
         record = self.client.post('/funds/api/records', json={'request_id': uuid4().hex,
             'record_type': '进', 'amount': '1.00', 'record_date': '2026-10-24'}).get_json()
         self.assertEqual(record['code'], 0)
-        self.assertEqual(record['review_status'], '已审核')
+        # Superadmin inherits review permission, but creation is never approval.
+        self.assertEqual(record['review_status'], '待审核')
+        before = self.client.get(f"/funds/api/records/{record['id']}").get_json()['data']
+        self.assertEqual(before['reviewed_by'], '')
+        self.assertEqual(before['reviewed_at'], '')
+        approved = self.client.post(
+            f"/funds/api/records/{record['id']}/review",
+            json={'version': record['version']})
+        self.assertEqual(approved.status_code, 200, approved.get_json())
+        self.assertEqual(approved.get_json()['code'], 0)
+        reviewed = self.client.get(f"/funds/api/records/{record['id']}").get_json()['data']
+        self.assertEqual(reviewed['review_status'], '已审核')
+        self.assertEqual(reviewed['reviewed_by'], self.username)
+        self.assertTrue(reviewed['reviewed_at'])
 
     def test_demotion_removes_only_inherited_grants(self):
         with app_module.app.app_context():

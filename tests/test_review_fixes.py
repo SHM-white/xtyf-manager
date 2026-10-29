@@ -53,6 +53,53 @@ class TestReviewFixes(unittest.TestCase):
         self.assertIn('id', payload, payload)
         return payload
 
+    def test_reviewer_submission_requires_click_and_records_actual_approver(self):
+        # Review permission must never auto-approve a new submission.
+        payload = {'request_id': uuid4().hex, 'record_type': '进', 'amount': '12.34',
+                   'record_date': '2026-10-29', 'review_status': '已审核',
+                   'reviewed_by': '伪造审核人', 'reviewed_at': '2026-10-29 00:00:00'}
+        response = self.member.post('/funds/api/records', json=payload)
+        self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+        created = response.get_json()
+        self.assertEqual(created['review_status'], '待审核')
+        with funds.get_funds_db() as db:
+            before = db.execute(
+                'SELECT review_status, reviewed_by, reviewed_at FROM records WHERE id=?',
+                (created['id'],)).fetchone()
+        self.assertEqual(tuple(before), ('待审核', '', ''))
+
+        # A different authorized reviewer performs the actual approval.
+        approver_name = 'approver_' + uuid4().hex[:12]
+        user = self.admin.post('/api/member', json={
+            'name': approver_name, 'username': approver_name,
+            'password': 'review-password', 'role': 'manager'}).get_json()
+        self.assertTrue(user['ok'], user)
+        granted = self.admin.post(
+            f"/api/admin/permissions/{user['id']}",
+            json={'permissions': ['funds.review']})
+        self.assertEqual(granted.status_code, 200, granted.get_json())
+        approver = app_module.app.test_client()
+        self.assertTrue(approver.post('/login', json={
+            'username': approver_name, 'password': 'review-password'}).get_json()['ok'])
+        approved = approver.post(
+            f"/funds/api/records/{created['id']}/review",
+            json={'version': created['version']})
+        self.assertEqual(approved.status_code, 200, approved.get_json())
+        self.assertEqual(approved.get_json()['version'], created['version'] + 1)
+
+        # An idempotent replay cannot undo an approval already completed.
+        replay = self.member.post('/funds/api/records', json=payload)
+        self.assertEqual(replay.status_code, 200, replay.get_json())
+        self.assertTrue(replay.get_json()['replayed'])
+        with funds.get_funds_db() as db:
+            after = db.execute(
+                'SELECT review_status, reviewed_by, reviewed_at FROM records WHERE id=?',
+                (created['id'],)).fetchone()
+        self.assertEqual(after['review_status'], '已审核')
+        self.assertEqual(after['reviewed_by'], approver_name)
+        self.assertRegex(after['reviewed_at'],
+                         r'^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$')
+
     def test_stale_review_rejected_and_unchanged_edit_keeps_version(self):
         record = self.record()
         rid = record['id']

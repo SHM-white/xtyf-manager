@@ -4,7 +4,7 @@
 
 功能：
   - 资金记录：增删改查、筛选排序、CSV 导出
-  - 审核流：未获审核授权的人添加 → 待审核；审核人添加 → 自动已审核；导航角标提醒待审数量
+  - 审核流：所有新记录均待审核；审核人明确点击通过后记录审核人和时间；导航角标提醒待审数量
   - 统计图表：matplotlib 生成 PNG（月度收支/支出类别/队员排名/来源分布）
   - 台账同步：每次变更自动生成 资金管理记录.txt（含"审核"列）
 
@@ -375,7 +375,7 @@ def get_record(rid):
 
 
 @funds_bp.route("/api/records", methods=["POST"])
-# ---- 新增记录：申请人自动填当前登录人；未获审核授权的人添加 → 待审核（审核人自动已审核）----
+# ---- 新增记录：申请人自动填当前登录人；所有新记录均需单独审核 ----
 def add_record():
     data = money_json()
     request_id = data.get('request_id')
@@ -418,11 +418,6 @@ def add_record():
         if not ok:
             return rejected(err)
 
-    auto_review = can_review(user)
-    review_status = "已审核" if auto_review else "待审核"
-    reviewed_by = user["name"] if auto_review else ""
-    reviewed_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S") if auto_review else ""
-
     conn = get_funds_db()
     rid = None
     try:
@@ -442,10 +437,10 @@ def add_record():
                 rt, amount, data.get('category', ''),
                 data.get('source_dest', '') if rt == '进' else data.get('source_dest', '').strip(),
                 applicant, invoice_count, data.get('handler', '').strip(), rd, data.get('notes', ''),
-                review_status, reviewed_by, reviewed_at,
+                "待审核", "", "",
             )).lastrowid
             result = dict(code=0, msg='添加成功', id=rid, applicant=applicant,
-                          review_status=review_status, version=1, request_id=request_id, **money_fields(amount))
+                          review_status="待审核", version=1, request_id=request_id, **money_fields(amount))
             conn.execute('INSERT INTO funds_requests VALUES(?,?,?,?,?)',
                          (user['id'], request_id, payload_hash, json.dumps(result, ensure_ascii=False),
                           datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
