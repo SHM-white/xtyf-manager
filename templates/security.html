@@ -12,9 +12,13 @@
 </section>
 <section class="panel">
   <div class="toolbar"><h2>业务操作记录</h2><button type="button" class="btn" id="audit-refresh">刷新记录</button></div>
-  <label>审计分类<select id="audit-level"><option value="critical">关键安全／业务审计</option><option value="routine">旧普通操作</option><option value="all">全部记录</option></select></label>
-  <p class="ux-note">记录操作者、目标、请求内容摘要及处理结果，不记录密码或文件内容。“未完成”表示执行中或执行中断，不能据此判定业务已完成；批量操作可能部分成功。</p>
-  <div class="table-wrap"><table><thead><tr><th>时间</th><th>操作者</th><th>操作 / 目标</th><th>结果</th><th>摘要</th></tr></thead><tbody id="audit-events"></tbody></table></div>
+  <div class="toolbar" aria-label="审计筛选">
+    <label>业务分类<select id="audit-category"><option value="all">全部业务</option><option value="finance">资金与发票</option><option value="security">登录与权限</option><option value="assets">资产与物资</option><option value="members">成员与账号</option><option value="tasks">任务与项目</option><option value="collaboration">协作与通知</option><option value="settings">系统设置</option><option value="other">未分类</option></select></label>
+    <label>重要级别<select id="audit-level"><option value="priority">重点记录（默认）</option><option value="permanent">永久保留</option><option value="critical">严重 / 安全</option><option value="important">重要操作</option><option value="normal">一般变更</option><option value="routine">低优先级</option><option value="all">全部级别</option></select></label>
+    <label>处理结果<select id="audit-outcome"><option value="all">全部结果</option><option value="failure">失败</option><option value="partial">部分成功</option><option value="pending">未完成</option><option value="success">成功</option></select></label>
+  </div>
+  <p class="ux-note">财务日志永久保留；安全/严重日志默认 365 天，重要操作 180 天，一般变更 90 天，低优先级 7 天。仅人工执行备份后的维护命令才会清理到期记录。“未完成”不表示业务已成功。</p>
+  <div class="table-wrap"><table><thead><tr><th>时间</th><th>操作者</th><th>业务 / 级别</th><th>操作 / 目标</th><th>结果</th><th>摘要</th></tr></thead><tbody id="audit-events"></tbody></table></div>
   <button type="button" class="btn" id="audit-more" hidden>加载更早记录</button>
   <p id="audit-result" role="status" aria-live="polite"></p>
 </section>
