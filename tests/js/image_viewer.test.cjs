@@ -10,7 +10,7 @@ function harness(fetchResponse) {
   const handlers = {};
   const dialogEvents = {};
   const stageEvents = {};
-  const created = [], revoked = [];
+  const created = [], revoked = [], anchors = [];
   const stage = {
     addEventListener(type, handler) {stageEvents[type] = handler;},
     setPointerCapture() {},
@@ -36,7 +36,25 @@ function harness(fetchResponse) {
     body: {append(node) {created.push(node);}},
     createElement(tag) {
       if (tag === "dialog") return dialog;
-      if (tag === "a") return {click() {this.clicked=true;}, remove(){}, href:"", download:""};
+      if (tag === "a") {
+        const attributes = new Map();
+        const link = {
+          href:"", download:"", dataset:{}, remove(){}, querySelector(){return null;},
+          setAttribute(key, value){attributes.set(key, value);},
+          getAttribute(key){return key === "download" ? this.download : attributes.get(key) ?? null;},
+          hasAttribute(key){return attributes.has(key);},
+          matches(selector){return selector === "a[href]" || (selector === "[data-no-image-preview]" && attributes.has("data-no-image-preview"));},
+          click(){
+            const event = {button:0, defaultPrevented:false, target:{closest:()=>this},
+              preventDefault(){this.defaultPrevented=true;}, stopPropagation(){}};
+            handlers.click.handler(event);
+            this.clicked = true;
+            this.downloadStarted = !event.defaultPrevented;
+          },
+        };
+        anchors.push(link);
+        return link;
+      }
       if (tag === "canvas") return {width:0,height:0,getContext() {return {drawImage(){}};},toBlob(callback) {callback(new Blob(["png"], {type:"image/png"}));}};
       throw new Error("Unexpected tag: " + tag);
     },
@@ -52,7 +70,7 @@ function harness(fetchResponse) {
     fetch:async (url, options) => {fetchCalls.push({url,options});return fetchResponse;}, console, Uint8Array, Error};
   ctx.window=ctx;
   vm.createContext(ctx); vm.runInContext(src, ctx);
-  return {api:ctx.ImageViewer,ctx,handlers,dialog,dialogEvents,stageEvents,picture,name,status,zoom,fetchCalls,created,revoked};
+  return {api:ctx.ImageViewer,ctx,handlers,dialog,dialogEvents,stageEvents,picture,name,status,zoom,fetchCalls,created,revoked,anchors};
 }
 const imageBlob = new Blob([Uint8Array.from([137,80,78,71,13,10,26,10,0,0,0,0])], {type:"application/octet-stream"});
 const response = blob => ({ok:true, headers:{get(key){return key === "Content-Length" ? String(blob.size) : "application/octet-stream";}}, blob:async()=>blob});
@@ -90,6 +108,9 @@ test("delegated image click opens viewer without navigation; zoom, rotate, downl
   h.dialogEvents.click({target:{closest:()=>({dataset:{ivAction:"rotate"}})},preventDefault(){}});
   assert.match(h.picture.style.transform,/rotate\(90deg\)/);
   h.dialogEvents.click({target:{closest:()=>({dataset:{ivAction:"download"}})},preventDefault(){}});
+  assert.equal(h.anchors[0].downloadStarted,true);
+  assert.equal(h.anchors[0].download,"示例.png");
+  assert.equal(h.anchors[0].href,h.picture.src);
   assert.equal(h.status.textContent,"已发起下载");
   h.api.close();
   assert.equal(h.dialog.open,false);
@@ -131,4 +152,61 @@ test("viewer refuses off-origin programmatic image opens", async () => {
   const h=harness(response(imageBlob));
   await assert.rejects(h.api.open("https://outside.example/foo.png"),/只能在站内查看图片/);
   assert.equal(h.dialog.open,false);
+});
+
+test("Escape closes only the image viewer and preserves the underlying task form", async () => {
+  const h=harness(response(imageBlob));
+  let hidden=false, cleared=false;
+  const taskModal={replaceChildren(){cleared=true;},className:"modal"};
+  const mask={classList:{contains(){return hidden;},add(){hidden=true;}}};
+  h.ctx.document.getElementById=id=>id === "modal-mask" ? mask : taskModal;
+  h.ctx.document.body.classList={remove(){}};
+  vm.runInContext(fs.readFileSync(path.join(__dirname,"../../static/ui-dialog.js"),"utf8"),h.ctx);
+  let focused=0;
+  await h.api.open("/shot.png","shot.png",{isConnected:true,focus(){focused++;}});
+  const event={key:"Escape",target:{matches(){return false;}},defaultPrevented:false,cancelBubble:false,
+    preventDefault(){this.defaultPrevented=true;},stopPropagation(){this.cancelBubble=true;}};
+  h.dialogEvents.keydown(event);
+  if(!event.cancelBubble)h.ctx.modalKeydown(event);
+  assert.equal(hidden,false,"task dialog must stay open");
+  assert.equal(cleared,false,"unsaved task input must survive image dismissal");
+  assert.equal(h.dialog.open,false);
+  assert.equal(event.defaultPrevented,true);
+  assert.equal(h.revoked.length,1);
+  assert.equal(focused,1);
+});
+
+test("viewer keys stay isolated from page shortcuts and task focus traps", async () => {
+  const h=harness(response(imageBlob));
+  await h.api.open("/shot.png");
+  for(const key of ["Tab","r","+","c"]){
+    const event={key,ctrlKey:key === "c",target:{matches(){return false;}},cancelBubble:false,
+      preventDefault(){},stopPropagation(){this.cancelBubble=true;}};
+    h.dialogEvents.keydown(event);
+    assert.equal(event.cancelBubble,true,key+" must not reach underlying page handlers");
+  }
+});
+
+test("native dialog cancellation closes the viewer and releases its image", async () => {
+  const h=harness(response(imageBlob));
+  await h.api.open("/shot.png");
+  let prevented=false,stopped=false;
+  assert.equal(typeof h.dialogEvents.cancel,"function");
+  h.dialogEvents.cancel({preventDefault(){prevented=true;},stopPropagation(){stopped=true;}});
+  assert.equal(prevented,true);assert.equal(stopped,true);
+  assert.equal(h.dialog.open,false);assert.equal(h.revoked.length,1);
+});
+
+test("failed direct-image previews can download the original without interception", async () => {
+  const h=harness(response(new Blob(["not a supported image"])));
+  await h.api.open("/content/broken.png","broken.png");
+  assert.match(h.status.textContent,/不是支持的图片格式/);
+  h.dialogEvents.click({target:{closest:()=>({dataset:{ivAction:"download"}})},preventDefault(){}});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(h.anchors.length,1);
+  assert.equal(h.anchors[0].href,"https://example.org/content/broken.png");
+  assert.equal(h.anchors[0].download,"broken.png");
+  assert.equal(h.anchors[0].downloadStarted,true);
+  assert.equal(h.fetchCalls.length,1,"download must not open another preview request");
+  assert.equal(h.status.textContent,"已发起下载");
 });

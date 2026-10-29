@@ -67,7 +67,14 @@ window.ImageViewer = (() => {
       else if (event.target === dialog) close();
     });
     dialog.addEventListener("close", () => { if (!dialog.open) cleanup(); });
+    dialog.addEventListener("cancel", event => {
+      event.preventDefault(); event.stopPropagation(); close();
+    });
     dialog.addEventListener("keydown", event => {
+      // The task dialog beneath us has document-level Escape and Tab handlers.
+      // Keep keyboard events in the topmost viewer so its form is preserved.
+      event.stopPropagation();
+      if (event.key === "Escape") { event.preventDefault(); close(); return; }
       if (event.ctrlKey || event.metaKey || event.altKey || event.target.matches("input,textarea")) return;
       const key = {"+":"in", "=":"in", "-":"out", "_":"out", "0":"fit", "r":"rotate", "R":"rotate"}[event.key];
       if (key) { event.preventDefault(); action(key); }
@@ -178,6 +185,9 @@ window.ImageViewer = (() => {
     if (!currentURL) return;
     const link = document.createElement("a");
     link.href = objectUrl || currentURL; link.download = caption.textContent || "图片";
+    // A failed preview falls back to the original URL, which may end in .png.
+    // Do not let our delegated preview listener intercept this download again.
+    link.setAttribute("data-no-image-preview", "");
     document.body.append(link); link.click(); link.remove();
     setStatus("已发起下载");
   }
