@@ -13,7 +13,8 @@ from urllib.parse import urlsplit
 
 from flask import current_app
 from modules.daily_projects import TZ, describe_many
-from modules.mail_templates import render_digest_html, render_verification_html, render_test_html
+from modules.mail_templates import (render_digest_html, render_verification_html,
+                                    render_password_recovery_html, render_test_html)
 from modules.task_assignment_mail import assignment_content
 
 
@@ -337,7 +338,7 @@ def claim(db, at):
             db.execute("UPDATE mail_jobs SET state='skipped',error=?,finished_at=? WHERE kind=? AND state='pending' "
                        "AND (day<>? OR ? < ? OR ? >= ?)",
                        (f'已超出当日{label}窗口', epoch, kind, at.date().isoformat(), at.hour, start, at.hour, end))
-        row = db.execute("SELECT * FROM mail_jobs WHERE state='pending' AND next_at<=? ORDER BY CASE kind WHEN 'verify' THEN 0 WHEN 'test' THEN 1 WHEN 'assignment' THEN 2 ELSE 3 END,id LIMIT 1", (epoch,)).fetchone()
+        row = db.execute("SELECT * FROM mail_jobs WHERE state='pending' AND next_at<=? ORDER BY CASE kind WHEN 'password_recovery' THEN 0 WHEN 'verify' THEN 1 WHEN 'test' THEN 2 WHEN 'assignment' THEN 3 ELSE 4 END,id LIMIT 1", (epoch,)).fetchone()
         if row:
             db.execute("UPDATE mail_jobs SET state='sending',claimed_at=?,attempts=attempts+1 WHERE id=?", (epoch, row['id']))
         db.commit()
@@ -353,14 +354,32 @@ def process_job(db, job, at, transport=None):
         if job['kind'] in ('morning', 'morning_pm', 'daily', 'countdown') and not daily_window(
                 at, job['day'], kind=job['kind']):
             raise DeliveryError('已超出当天发送窗口', 'skipped')
-        member = db.execute('SELECT e.*,m.is_active,m.deleted_at FROM member_email e JOIN members m ON m.id=e.member_id WHERE e.member_id=?', (job['member_id'],)).fetchone()
+        member = db.execute('SELECT e.*,m.is_active,m.deleted_at,m.session_version AS current_session_version FROM member_email e JOIN members m ON m.id=e.member_id WHERE e.member_id=?', (job['member_id'],)).fetchone()
         if not member or not member['is_active'] or member['deleted_at'] or member['generation'] != job['generation']:
             raise DeliveryError('账户或邮箱已变化', 'skipped')
         message = EmailMessage()
         message['From'] = settings()['sender'] or 'preview@example.invalid'
         message['To'] = member['address']
         message['Message-ID'] = f'<xtyf-{job["id"]}-{job["generation"]}@{message["From"].split("@")[-1]}>'
-        if job['kind'] == 'verify':
+        if job['kind'] == 'password_recovery':
+            recovery = db.execute(
+                'SELECT nonce,email_generation,session_version,expires_at,attempts '
+                'FROM password_recovery WHERE member_id=?', (job['member_id'],)
+            ).fetchone()
+            if (not member['verified'] or not recovery
+                    or job['dedupe_key'] != 'password-recovery:' + recovery['nonce']
+                    or recovery['email_generation'] != member['generation']
+                    or recovery['session_version'] != member['current_session_version']
+                    or recovery['expires_at'] <= epoch or recovery['attempts'] >= 5):
+                raise DeliveryError('找回密码请求已失效', 'skipped')
+            code = verification_code('recovery:' + recovery['nonce'])
+            message['Subject'] = '巡天御风｜重置登录密码验证码'
+            text = ('您正在申请重置巡天御风账号密码。\\n'
+                    f'验证码：{code}\\n'
+                    '请在登录页面输入此验证码并设置新密码，15 分钟内有效，最多尝试 5 次。'
+                    '如非本人操作请忽略，切勿将验证码转发给他人。')
+            markup = render_password_recovery_html(code)
+        elif job['kind'] == 'verify':
             if member['verified'] or not member['token_hash'] or member['verify_attempts'] >= 5 or member['expires_at'] <= epoch:
                 raise DeliveryError('验证已完成或过期', 'skipped')
             code = verification_code(member['generation'])
@@ -432,7 +451,7 @@ def process_job(db, job, at, transport=None):
         if (exc.retry and exc.state == 'failed' and job['attempts'] < 3
                 and (job['kind'] not in ('morning', 'morning_pm', 'daily', 'countdown')
                      or daily_window(at + timedelta(minutes=15), job['day'], kind=job['kind']))):
-            state, next_at = 'pending', epoch + (60 if job['kind'] in ('verify', 'test') else 900)
+            state, next_at = 'pending', epoch + (60 if job['kind'] in ('verify', 'test', 'password_recovery') else 900)
     except Exception:
         # Do not log exceptions containing message bodies, addresses or tokens.
         state, error = 'unknown', '处理异常，请检查配置与任务状态，未自动重发'
