@@ -19,19 +19,25 @@ def classify_action(action, outcome='pending'):
                    'api_member_reset', 'api_member_role', 'api_member_toggle'}
             or action.startswith(('security.', 'client_api.login', 'client_api.logout'))):
         return 'security', 'critical'
-    if action in ROUTINE_ACTIONS:
+    if action in ROUTINE_ACTIONS or action == 'email.save_own_preferences':
         category, level = 'settings', 'routine'
-    elif action.startswith(('assets.', 'asset_', 'asset_bom.')):
+    elif action.startswith('asset_labels.'):
+        category, level = 'assets', 'routine'
+    elif action.startswith(('assets.', 'asset_', 'asset_bom.', 'asset_scan.', 'asset_units.')):
         category, level = 'assets', 'important'
-    elif (action.startswith(('member_profiles.', 'members.', 'member.', 'api_member',
+    elif (action.startswith(('member_profiles.', 'member_avatars.', 'member_introductions.',
+                              'members.', 'member.', 'api_member',
                               'task_catalogs.member_', 'task_catalogs.members_'))):
         category, level = 'members', 'important'
-    elif (action.startswith(('task_', 'tasks.', 'task.', 'task_catalogs.', 'projects.',
-                              'daily_projects.', 'task_schedule.'))):
+    elif (action.startswith(('collaboration_tasks.', 'task_progress.', 'task_attachments.',
+                              'task_alerts.', 'task_', 'tasks.', 'task.',
+                              'task_catalogs.', 'projects.', 'daily_projects.',
+                              'task_schedule.'))):
         category, level = 'tasks', 'normal'
-    elif action.startswith(('collaboration.', 'discussions.', 'github_', 'mail_', 'notifications.')):
+    elif action.startswith(('discussions.', 'item_topics.', 'email.', 'collaboration.',
+                             'github_', 'mail_', 'notifications.')):
         category, level = 'collaboration', 'normal'
-    elif action.startswith(('workspace_settings.', 'client_updates.', 'pwa.')):
+    elif action.startswith(('workspace_settings.', 'site_updates.', 'client_updates.', 'pwa.')):
         category, level = 'settings', 'routine'
     else:
         category, level = 'other', 'critical'
