@@ -87,3 +87,26 @@ test("day-zero, finished and dependency labels stay readable without relying on 
   assert.equal(label(task({status:"已完成",days_left:-2})), "");
   assert.equal(label(task({status:"已取消",days_left:0})), "");
 });
+
+test("exceptional states breathe at distinct strengths while routine tasks stay still", () => {
+  const css = fs.readFileSync(path.join(path.resolve(__dirname, "../.."), "static", "task-center.css"), "utf8");
+  const legacy = fs.readFileSync(path.join(path.resolve(__dirname, "../.."), "static", "collaboration.css"), "utf8");
+  assert.doesNotMatch(legacy, /task-due-breathe|\.task\.is-due-soon\s*,\s*\.ws-task-row\.is-due-soon/);
+  const options = [
+    ["blocked", "3.2s", "23%"],
+    ["overdue", "3.8s", "18%"],
+    ["due-soon", "4.6s", "14%"],
+  ];
+  for (const [name, duration, opacity] of options) {
+    const selector = `\.task-tone-${name} {`;
+    const start = css.indexOf(selector);
+    assert.notEqual(start, -1, `missing breathing variables for ${name}`);
+    const declaration = css.slice(start, css.indexOf("}", start));
+    assert.ok(declaration.includes(`--task-breathe-duration:${duration}`), `duration: ${name}`);
+    assert.ok(declaration.includes(`--task-breathe-opacity:${opacity}`), `strength: ${name}`);
+  }
+  assert.match(css, /:where\(\.task,\.ws-task-row,\.timeline-row\):is\(\.task-tone-blocked,\.task-tone-overdue,\.task-tone-due-soon\)\s*\{\s*animation:task-state-breathe/);
+  assert.match(css, /@keyframes task-state-breathe/);
+  assert.match(css, /@media\s*\(prefers-reduced-motion:reduce\)[\s\S]*?animation:none/);
+  assert.doesNotMatch(css, /:is\(\.task-tone-completed|:is\(\.task-tone-in-progress|:is\(\.task-tone-dependency/);
+});
