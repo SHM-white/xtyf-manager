@@ -374,8 +374,8 @@ def process_job(db, job, at, transport=None):
                 raise DeliveryError('找回密码请求已失效', 'skipped')
             code = verification_code('recovery:' + recovery['nonce'])
             message['Subject'] = '巡天御风｜重置登录密码验证码'
-            text = ('您正在申请重置巡天御风账号密码。\\n'
-                    f'验证码：{code}\\n'
+            text = ('您正在申请重置巡天御风账号密码。\n'
+                    f'验证码：{code}\n'
                     '请在登录页面输入此验证码并设置新密码，15 分钟内有效，最多尝试 5 次。'
                     '如非本人操作请忽略，切勿将验证码转发给他人。')
             markup = render_password_recovery_html(code)
