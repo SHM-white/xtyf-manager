@@ -76,7 +76,10 @@ class PasswordRecoveryTest(unittest.TestCase):
                 (self.mid,))]
 
     def code(self):
-        return verification_code('recovery:' + self.challenge()['nonce'])
+        # The code derivation reads current_app.secret_key. Keep this helper
+        # usable from ordinary test methods without a persistent app context.
+        with self.app.app_context():
+            return verification_code('recovery:' + self.challenge()['nonce'])
 
     def test_valid_code_resets_password_and_revokes_other_sessions(self):
         member = self.app.test_client()
