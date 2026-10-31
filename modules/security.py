@@ -284,6 +284,13 @@ def init_security(app):
             succeeded = response.status_code < 400 and isinstance(payload, dict) and payload.get('ok') is True
             if succeeded or _limited_audit_event('login_failure'):
                 _start_request_audit(current_user() if succeeded else None)
+        recovered_member_id = getattr(g, "recovered_member_id", None)
+        if recovered_member_id is not None:
+            # Successful email recovery is auditable even without a login session.
+            # Reuse an authenticated request's record and never store credentials.
+            if not getattr(g, "audit_id", None):
+                _start_request_audit(None)
+            g.audit_details["member_id"] = recovered_member_id
         audit_id = getattr(g, "audit_id", None)
         if audit_id:
             payload = response.get_json(silent=True) if response.is_json else None

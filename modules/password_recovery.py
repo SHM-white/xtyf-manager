@@ -6,7 +6,7 @@ import secrets
 from datetime import datetime
 from time import time as epoch_now
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, current_app, g, jsonify, request
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from common import get_db
@@ -145,4 +145,6 @@ def confirm_reset():
     except Exception:
         db.rollback()
         raise
+    # Only a committed reset may identify the target to the request audit hook.
+    g.recovered_member_id = member["id"]
     return jsonify(ok=True, message="密码已重置，请使用新密码登录")

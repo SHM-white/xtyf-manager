@@ -1,8 +1,10 @@
 """Password recovery: enumeration resistance, delivery, expiry and session revocation."""
+import json
 import sqlite3
 import unittest
 from contextlib import contextmanager
 from datetime import datetime
+from unittest.mock import patch
 from uuid import uuid4
 
 from test_tasks import app_module
@@ -81,6 +83,12 @@ class PasswordRecoveryTest(unittest.TestCase):
         with self.app.app_context():
             return verification_code('recovery:' + self.challenge()['nonce'])
 
+    def recovery_audits(self):
+        with self.connection() as db:
+            return [dict(row) for row in db.execute(
+                "SELECT * FROM security_audit WHERE action='password_recovery.confirm_reset' "
+                "AND json_extract(details,'$.member_id')=?", (self.mid,))]
+
     def test_valid_code_resets_password_and_revokes_other_sessions(self):
         member = self.app.test_client()
         self.assertTrue(member.post('/login', json={
@@ -92,9 +100,23 @@ class PasswordRecoveryTest(unittest.TestCase):
         self.assertNotIn('member@example.invalid', str(response.get_json()))
         self.assertEqual(len(self.jobs()), 1)
         code = self.code()
-        self.assertEqual(self.confirm(code).status_code, 200)
+        with patch('modules.security._limited_audit_event', return_value=False):
+            self.assertEqual(self.confirm(code).status_code, 200)
+        audits = self.recovery_audits()
+        self.assertEqual(len(audits), 1)
+        audit = audits[0]
+        self.assertIsNone(audit['actor_id'])
+        self.assertEqual(audit['target'], '/api/password-recovery/confirm')
+        self.assertEqual(audit['outcome'], 'success')
+        self.assertEqual(audit['http_status'], 200)
+        self.assertEqual(audit['level'], 'critical')
+        self.assertTrue(audit['created_at'])
+        self.assertTrue(audit['finished_at'])
+        # Exact allowlist: no password, code, email address or challenge nonce.
+        self.assertEqual(json.loads(audit['details']), {'member_id': self.mid})
         self.assertEqual(member.get('/api/data').status_code, 401)
         self.assertEqual(self.confirm(code).status_code, 400)
+        self.assertEqual(len(self.recovery_audits()), 1)
         self.assertEqual(self.anonymous.post('/login', json={
             'username': self.username, 'password': self.password
         }).status_code, 400)
@@ -103,6 +125,28 @@ class PasswordRecoveryTest(unittest.TestCase):
         })
         self.assertTrue(login.get_json()['ok'])
         self.assertFalse(login.get_json()['must_change_password'])
+
+    def test_authenticated_recovery_reuses_request_audit(self):
+        self.request_code()
+        with self.connection() as db:
+            before = db.execute(
+                "SELECT count(*) FROM security_audit WHERE action='password_recovery.confirm_reset'"
+            ).fetchone()[0]
+        response = self.admin.post('/api/password-recovery/confirm', json={
+            'username': self.username, 'code': self.code(),
+            'new_password': 'test-replacement-password',
+        })
+        self.assertEqual(response.status_code, 200)
+        with self.connection() as db:
+            after = db.execute(
+                "SELECT count(*) FROM security_audit WHERE action='password_recovery.confirm_reset'"
+            ).fetchone()[0]
+            admin_id = db.execute("SELECT id FROM members WHERE username='admin'").fetchone()[0]
+        self.assertEqual(after, before + 1)
+        audits = self.recovery_audits()
+        self.assertEqual(len(audits), 1)
+        self.assertEqual(audits[0]['actor_id'], admin_id)
+        self.assertEqual(json.loads(audits[0]['details']), {'member_id': self.mid})
 
     def test_no_enumeration_for_missing_unverified_or_disabled_accounts(self):
         actual = self.request_code()
@@ -131,6 +175,7 @@ class PasswordRecoveryTest(unittest.TestCase):
             self.assertEqual(response.get_json()['error'], '验证码无效或已过期，请重新申请。')
         self.assertEqual(self.challenge()['attempts'], 5)
         self.assertEqual(self.confirm(code).status_code, 400)
+        self.assertEqual(self.recovery_audits(), [])
         with self.connection() as db:
             db.execute('UPDATE password_recovery SET attempts=0,expires_at=0 WHERE member_id=?',
                        (self.mid,))
