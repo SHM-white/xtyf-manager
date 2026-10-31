@@ -76,8 +76,8 @@ function taskCard(task, extraClass = "", memberId = null) {
   const participants = taskParticipants(task).map((id) => memberById(id)?.name || `成员 #${id}`);
   const warnings = task.dependency_warnings || [];
   const meta = [taskProjectName(task), participants.join("、")].filter(Boolean);
-  return `<article class="task ${task.status === "阻塞" ? "is-blocked" : ""} ${isOverdue(task) ? "overdue" : ""} ${isDueSoon(task) ? "is-due-soon" : ""} ${warnings.length ? "has-warning" : ""} ${extraClass}" data-task-id="${Number(task.id)}" role="button" tabindex="0" aria-label="查看任务 ${esc(task.title)}">
-    <div class="task-head"><h3>${esc(task.title)}</h3>${badge(task.status, STATUS_CLASS[task.status] || "gray")}</div>
+  return `<article class="task ${taskHighlightClasses(task)} ${extraClass}" data-task-id="${Number(task.id)}" role="button" tabindex="0" aria-label="查看任务 ${esc(task.title)}">
+    <div class="task-head"><h3>${esc(task.title)}</h3>${badge(task.status, STATUS_CLASS[task.status] || "gray")}${taskAttentionBadge(task, true)}</div>
     <div class="task-meta">${memberId == null ? "" : badge(Number(task.owner_id) === Number(memberId) ? "总负责" : "参与任务", Number(task.owner_id) === Number(memberId) ? "blue" : "gray")}${badge(`${task.priority}优先`, PRIORITY_CLASS[task.priority] || "gray")}${meta.map((value) => `<span>${esc(value)}</span>`).join("")}</div>
     ${warnings.length ? `<p class="task-warning">依赖提醒：${esc(warnings.join("；"))}</p>` : ""}
     ${state.view === "specialty" ? `<p class="task-plan-dates">计划：${esc(task.start_date || "未设开始")} → ${esc(task.due_date || "未设截止")}</p>` : ""}

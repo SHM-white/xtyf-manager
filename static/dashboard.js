@@ -25,7 +25,7 @@ function dashboardTaskRow(task) {
         ).join("")}
       </span>`
     : '<span class="ws-task-activity-empty">暂无进度动态</span>';
-  return `<button type="button" class="ws-task-row${isDueSoon(task) ? " is-due-soon" : ""}${isOverdue(task) ? " is-overdue" : ""}"
+  return `<button type="button" class="ws-task-row ${taskHighlightClasses(task)}"
       data-dashboard-task="${Number(task.id)}" aria-label="查看任务 ${esc(task.title)} 的只读详情">
     <span class="ws-task-row-main">
       <span class="ws-task-row-top">
@@ -33,6 +33,7 @@ function dashboardTaskRow(task) {
         <span class="ws-task-row-title"><strong>${esc(task.title)}</strong></span>
         ${badge(task.status, STATUS_CLASS[task.status] || "gray")}
         ${badge(daysLeftText(task), daysLeftClass(task))}
+        ${!isFinishedTask(task) && task.dependency_warnings?.length ? badge("依赖提醒", "task-dependency") : ""}
       </span>
       <span class="ws-task-row-sub">${esc(responsibility)} · ${esc(taskProjectName(task) || "未归属造车组别")} · ${esc(people)}</span>
       <span class="ws-task-progress-head"><span>任务进度</span><strong>${percent}%</strong></span>
