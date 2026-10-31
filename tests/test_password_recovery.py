@@ -196,20 +196,36 @@ class PasswordRecoveryTest(unittest.TestCase):
         self.assertEqual(self.confirm(code).status_code, 400)
 
     def test_rate_limit_cooldown_and_account_hourly_cap(self):
-        self.assertEqual(self.request_code().status_code, 202)
-        self.assertEqual(self.request_code().status_code, 202)
+        start = 1_800_000_000
+        with patch('modules.password_recovery.epoch_now', return_value=start):
+            self.assertEqual(self.request_code().status_code, 202)
+        with patch('modules.password_recovery.epoch_now', return_value=start + 30):
+            self.assertEqual(self.request_code().status_code, 202)
         self.assertEqual(len(self.jobs()), 1)
-        for _ in range(4):
-            with self.connection() as db:
-                db.execute('UPDATE password_recovery SET requested_at=0 WHERE member_id=?',
-                           (self.mid,))
+        for offset in (60, 120, 180, 240):
+            with patch('modules.password_recovery.epoch_now', return_value=start + offset):
+                self.assertEqual(self.request_code().status_code, 202)
+        self.assertEqual(len(self.jobs()), 5)
+        # The cooldown has elapsed, but the independent hourly cap still applies.
+        with patch('modules.password_recovery.epoch_now', return_value=start + 300):
             self.assertEqual(self.request_code().status_code, 202)
         self.assertEqual(len(self.jobs()), 5)
-        with self.connection() as db:
-            db.execute('UPDATE password_recovery SET requested_at=0 WHERE member_id=?',
-                       (self.mid,))
-        self.assertEqual(self.request_code().status_code, 202)
-        self.assertEqual(len(self.jobs()), 5)
+
+    def test_successful_reset_does_not_clear_account_request_cooldown(self):
+        start = 1_800_000_000
+        with patch('modules.password_recovery.epoch_now', return_value=start):
+            self.assertEqual(self.request_code().status_code, 202)
+        self.assertEqual(len(self.jobs()), 1)
+        code = self.code()
+        with patch('modules.password_recovery.epoch_now', return_value=start + 10):
+            self.assertEqual(self.confirm(code).status_code, 200)
+        self.assertIsNone(self.challenge(), 'successful reset consumes the active challenge')
+        with patch('modules.password_recovery.epoch_now', return_value=start + 20):
+            self.assertEqual(self.request_code().status_code, 202)
+        self.assertEqual(len(self.jobs()), 1, 'account cooldown must survive challenge deletion')
+        with patch('modules.password_recovery.epoch_now', return_value=start + 60):
+            self.assertEqual(self.request_code().status_code, 202)
+        self.assertEqual(len(self.jobs()), 2, 'a new request is allowed after 60 seconds')
 
     def test_source_cap_limits_different_usernames_without_disclosing(self):
         for _ in range(8):

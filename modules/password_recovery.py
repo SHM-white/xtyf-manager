@@ -67,15 +67,19 @@ def request_reset():
                 (username,),
             ).fetchone()
             if member and member["verified"] and member["generation"]:
-                pending = db.execute(
-                    "SELECT requested_at FROM password_recovery WHERE member_id=?", (member["id"],)
-                ).fetchone()
+                # The active challenge is deleted after a successful reset, so it
+                # cannot be the source of truth for account cooldown. Mail-job history
+                # survives challenge consumption and records every accepted request.
+                last_request = db.execute(
+                    "SELECT max(created_at) FROM mail_jobs WHERE member_id=? AND kind='password_recovery'",
+                    (member["id"],),
+                ).fetchone()[0]
                 recent = db.execute(
                     "SELECT count(*) FROM mail_jobs WHERE member_id=? AND kind='password_recovery' "
                     "AND created_at>?",
                     (member["id"], now - SOURCE_WINDOW),
                 ).fetchone()[0]
-                if (not pending or now - pending["requested_at"] >= ACCOUNT_COOLDOWN) and recent < ACCOUNT_HOURLY_MAX:
+                if (last_request is None or now - last_request >= ACCOUNT_COOLDOWN) and recent < ACCOUNT_HOURLY_MAX:
                     nonce = secrets.token_hex(24)
                     db.execute(
                         "INSERT INTO password_recovery(member_id,nonce,email_generation,session_version,"
