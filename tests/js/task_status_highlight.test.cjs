@@ -89,7 +89,7 @@ test("day-zero, finished and dependency labels stay readable without relying on 
 });
 
 test("exceptional states breathe at distinct strengths while routine tasks stay still", () => {
-  const css = fs.readFileSync(path.join(path.resolve(__dirname, "../.."), "static", "task-center.css"), "utf8");
+  const css = fs.readFileSync(path.join(path.resolve(__dirname, "../.."), "static", "task-center.css"), "utf8").replace(/\r\n/g, "\n");
   const legacy = fs.readFileSync(path.join(path.resolve(__dirname, "../.."), "static", "collaboration.css"), "utf8");
   assert.doesNotMatch(legacy, /task-due-breathe|\.task\.is-due-soon\s*,\s*\.ws-task-row\.is-due-soon/);
   const options = [
