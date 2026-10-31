@@ -125,11 +125,30 @@ document.addEventListener("DOMContentLoaded", () => {
     const label = Object.entries(verbs).find(([key]) => operation.includes(key))?.[1];
     return label ? `${categories[event.category] || "业务"} · ${label}` : (categories[event.category] || "业务") + "操作";
   }
+  let auditLoading = false;
+  let auditRevision = 0;
+  let auditQueuedRefresh = false;
   async function loadAudit(reset) {
-    if (auditLoading) return;
-    auditLoading=true;
     const status = document.getElementById("audit-result");
     const more = document.getElementById("audit-more");
+    const host = document.getElementById("audit-events");
+    if (reset) {
+      // Invalidate in-flight responses and their paging cursors immediately.
+      auditRevision += 1;
+      nextBefore = null;
+      more.hidden = true;
+      host.innerHTML = '<tr><td colspan="6">正在加载…</td></tr>';
+      status.textContent = "";
+      if (auditLoading) {
+        // Coalesce rapid filter changes, but always fetch the latest selection.
+        auditQueuedRefresh = true;
+        return;
+      }
+    } else if (auditLoading || !nextBefore) {
+      return;
+    }
+    auditLoading = true;
+    const revision = auditRevision;
     more.disabled = true;
     try {
       const params = new URLSearchParams({
@@ -139,6 +158,8 @@ document.addEventListener("DOMContentLoaded", () => {
       });
       if (!reset && nextBefore) params.set("before", String(nextBefore));
       const data = await api(`/api/admin/audit?${params}`);
+      // Ignore responses for filters that the user has already changed.
+      if (revision !== auditRevision) return;
       const rows = data.events.map((event) => `<tr>
         <td>${escape(event.created_at)}</td>
         <td>${escape(event.actor_name || "未登录")} ${event.actor_id ? `#${Number(event.actor_id)}` : ""}</td>
@@ -147,20 +168,24 @@ document.addEventListener("DOMContentLoaded", () => {
         <td>${escape({success: "成功", failure: "失败", partial: "部分成功", pending: "未完成"}[event.outcome] || event.outcome)} ${event.http_status || ""}</td>
         <td><details><summary>查看摘要</summary><pre class="audit-details">${escape(event.details)}</pre></details></td>
       </tr>`).join("");
-      const host = document.getElementById("audit-events");
       if (reset) host.innerHTML = rows || '<tr><td colspan="6">暂无操作记录</td></tr>';
       else host.insertAdjacentHTML("beforeend", rows);
       nextBefore = data.next_before;
       more.hidden = !nextBefore;
       status.textContent = "";
     } catch (error) {
-      status.textContent = error.message;
+      if (revision === auditRevision) status.textContent = error.message;
     } finally {
-      more.disabled = false;
-      auditLoading=false;
+      auditLoading = false;
+      if (auditQueuedRefresh) {
+        auditQueuedRefresh = false;
+        // A new request starts with freshly selected filters and no old cursor.
+        void loadAudit(true);
+      } else {
+        more.disabled = false;
+      }
     }
   }
-  let auditLoading=false;
   document.getElementById("audit-refresh").addEventListener("click", () => loadAudit(true));
   for (const id of ["audit-level", "audit-category", "audit-outcome"]) {
     document.getElementById(id)?.addEventListener("change", () => loadAudit(true));
