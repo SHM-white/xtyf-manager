@@ -16,7 +16,10 @@ from common import DB_PATH, ROLE_NAMES, current_user, get_db, login_required, no
 from modules.client_address import client_address
 from modules.pwa import PUBLIC_ENDPOINTS
 from modules.request_limits import asset_request_limit
-from modules.audit_retention import ROUTINE_ACTIONS, migrate_classification, cleanup_audit_rows  # noqa: F401
+from modules.audit_retention import (ROUTINE_ACTIONS, migrate_classification,
+                                     migrate_retention_settings, retention_policy,
+                                     save_retention_days, classify_action, CATEGORIES, LEVELS)
+from modules.audit_retention import cleanup_audit_rows as cleanup_audit_rows  # compat re-export
 
 bp = Blueprint("security", __name__)
 PERMISSIONS = {"funds.review": "资金审核", "invoices.manage": "发票管理", "assets.manage": "资产管理"}
@@ -48,11 +51,13 @@ def _limited_audit_event(kind):
 
 def _start_request_audit(user):
     g.audit_details = {}
+    action = request.endpoint or 'unknown'
+    category, level = classify_action(action)
     with closing(sqlite3.connect(DB_PATH, timeout=15)) as db, db:
         g.audit_id = db.execute(
-            'INSERT INTO security_audit(actor_id,actor_name,action,method,target,details,created_at) VALUES(?,?,?,?,?,?,?)',
+            'INSERT INTO security_audit(actor_id,actor_name,action,method,target,details,created_at,category,level) VALUES(?,?,?,?,?,?,?,?,?)',
             (user['id'] if user else None, user['name'] if user else '',
-             request.endpoint or 'unknown', request.method, request.path, '{}', now_str()),
+             action, request.method, request.path, '{}', now_str(), category, level),
         ).lastrowid
 
 
@@ -96,6 +101,7 @@ def migrate_security(db):
     db.execute("BEGIN IMMEDIATE")
     try:
         migrate_classification(db)
+        migrate_retention_settings(db)
         cols = {row[1] for row in db.execute("PRAGMA table_info(members)")}
         if "must_change_password" not in cols:
             db.execute("ALTER TABLE members ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0")
@@ -181,10 +187,13 @@ def audit_background_start(job_type, job_id, db=None):
         finally:
             connection.close()
     user = current_user()
+    action = "invoices.job." + job_type
+    category, level = classify_action(action)
     return db.execute(
-        "INSERT INTO security_audit(actor_id,actor_name,action,method,target,details,created_at) VALUES(?,?,?,?,?,?,?)",
-        (user["id"], user["name"], "invoices.job." + job_type, "JOB", job_id,
-         json.dumps({"request_audit_id": getattr(g, "audit_id", None)}), now_str()),
+        "INSERT INTO security_audit(actor_id,actor_name,action,method,target,details,created_at,category,level) VALUES(?,?,?,?,?,?,?,?,?)",
+        (user["id"], user["name"], action, "JOB", job_id,
+         json.dumps({"request_audit_id": getattr(g, "audit_id", None)}), now_str(),
+         category, level),
     ).lastrowid
 
 
@@ -196,11 +205,22 @@ def audit_background_finish(audit_id, outcome, result, db=None):
                 return audit_background_finish(audit_id, outcome, result, db=connection)
         finally:
             connection.close()
-    prior = db.execute("SELECT details FROM security_audit WHERE id=?", (audit_id,)).fetchone()
-    details = json.loads(prior[0]) if prior else {}
+    # Legacy/synthetic job databases sometimes only have details/outcome.
+    # The production schema has action + category + level, but finalization
+    # must remain compatible with the historical minimal audit contract.
+    columns = {r[1] for r in db.execute("PRAGMA table_info(security_audit)")}
+    has_classification = {'action', 'category', 'level'} <= columns
+    fields = 'action,details' if has_classification else 'details'
+    prior = db.execute(f"SELECT {fields} FROM security_audit WHERE id=?", (audit_id,)).fetchone()
+    details = json.loads(prior[1 if has_classification else 0]) if prior else {}
     details["result"] = result
-    db.execute("UPDATE security_audit SET outcome=?,details=?,finished_at=? WHERE id=?",
-               (outcome, json.dumps(details, ensure_ascii=False), now_str(), audit_id))
+    if has_classification:
+        category, level = classify_action(prior[0] if prior else '', outcome)
+        db.execute("UPDATE security_audit SET outcome=?,details=?,finished_at=?,category=?,level=? WHERE id=?",
+                   (outcome, json.dumps(details, ensure_ascii=False), now_str(), category, level, audit_id))
+    else:
+        db.execute("UPDATE security_audit SET outcome=?,details=?,finished_at=? WHERE id=?",
+                   (outcome, json.dumps(details, ensure_ascii=False), now_str(), audit_id))
 
 
 def init_security(app):
@@ -302,8 +322,9 @@ def init_security(app):
             # A crash or failure to finalize leaves the durable 'pending' record visible.
             try:
                 with closing(sqlite3.connect(DB_PATH, timeout=5)) as db, db:
-                    db.execute("UPDATE security_audit SET outcome=?,http_status=?,finished_at=?,details=? WHERE id=?",
-                               (outcome, response.status_code, now_str(), json.dumps(g.audit_details, ensure_ascii=False)[:20000], audit_id))
+                    category, level = classify_action(request.endpoint, outcome)
+                    db.execute("UPDATE security_audit SET outcome=?,http_status=?,finished_at=?,details=?,category=?,level=? WHERE id=?",
+                               (outcome, response.status_code, now_str(), json.dumps(g.audit_details, ensure_ascii=False)[:20000], category, level, audit_id))
             except sqlite3.Error:
                 current_app.logger.exception("Could not finalize audit record %s", audit_id)
         return response
@@ -370,6 +391,45 @@ def permissions_set(member_id):
     return jsonify(ok=True)
 
 
+@bp.route("/api/admin/audit-retention", methods=["GET", "POST"])
+@admin_required
+def audit_retention_settings():
+    db = get_db()
+    if request.method == 'GET':
+        return jsonify(ok=True, **retention_policy(db))
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify(ok=False, error='配置必须是 JSON 对象'), 400
+    try:
+        if set(data) == {'reset'} and data['reset'] is True:
+            replacement, resetting = None, True
+        elif set(data) == {'days'}:
+            replacement, resetting = data['days'], False
+        else:
+            raise ValueError('仅支持 days（四个可配置级别）或 reset=true')
+        # Validate all parameters before starting any writes.
+        if not resetting:
+            from modules.audit_retention import validate_retention_days
+            replacement = validate_retention_days(replacement, exact=True)
+        previous = retention_policy(db)['days']
+        db.execute("BEGIN IMMEDIATE")
+        save_retention_days(db, replacement, reset=resetting)
+        current = retention_policy(db)
+        db.commit()
+    except ValueError as exc:
+        db.rollback()
+        return jsonify(ok=False, error=str(exc)), 400
+    except Exception:
+        db.rollback()
+        raise
+    # The configuration change itself is a high-priority security audit.
+    if hasattr(g, 'audit_details'):
+        g.audit_details['retention_policy_change'] = {
+            'before': previous, 'after': current['days'], 'reset': resetting,
+        }
+    return jsonify(ok=True, **current)
+
+
 @bp.get("/api/admin/audit")
 @admin_required
 def audit_get():
@@ -379,10 +439,20 @@ def audit_get():
             raise ValueError()
     except ValueError:
         return jsonify(ok=False, error="分页参数不合法"), 400
-    level = request.args.get('level', 'critical')
-    if level not in {'critical', 'routine', 'all'}:
-        return jsonify(ok=False, error='审计分类不合法'), 400
+    level = request.args.get('level', 'priority')
+    category = request.args.get('category', 'all')
+    outcome = request.args.get('outcome', 'all')
+    if level not in set(LEVELS) | {'priority', 'all'}:
+        return jsonify(ok=False, error='审计级别不合法'), 400
+    if category not in set(CATEGORIES) | {'all'}:
+        return jsonify(ok=False, error='业务分类不合法'), 400
+    if outcome not in {'all', 'success', 'failure', 'partial', 'pending'}:
+        return jsonify(ok=False, error='审计结果不合法'), 400
     rows = [dict(row) for row in get_db().execute(
-        "SELECT * FROM security_audit WHERE (?=0 OR id<?) AND (?='all' OR level=?) ORDER BY id DESC LIMIT 51",
-        (before, before, level, level))]
+        """SELECT * FROM security_audit WHERE (?=0 OR id<?)
+           AND (?='all' OR category=?)
+           AND (?='all' OR outcome=?)
+           AND (?='all' OR (?='priority' AND level IN ('permanent','critical','important')) OR level=?)
+           ORDER BY id DESC LIMIT 51""",
+        (before, before, category, category, outcome, outcome, level, level, level))]
     return jsonify(ok=True, events=rows[:50], next_before=rows[49]["id"] if len(rows) > 50 else None)
