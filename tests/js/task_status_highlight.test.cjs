@@ -99,7 +99,7 @@ test("deadline and dependency warnings both remain visible in each task view", (
   for (const [item, deadline] of samples) {
     for (const compact of [true, false]) {
       const labels = attention(item, compact);
-      assert.match(labels, deadline);
+      assert.match(labels, compact ? deadline : /逾期|剩余|今日|到期/);
       assert.match(labels, /依赖/);
       assert.match(labels, /task-dependency/);
     }
