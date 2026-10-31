@@ -54,6 +54,7 @@ from modules.daily_projects import bp as daily_projects_bp
 from modules.task_alerts import bp as task_alerts_bp
 from modules.item_topics import bp as item_topics_bp, migrate as migrate_item_topics
 from modules.email_api import bp as email_bp
+from modules.password_recovery import bp as password_recovery_bp
 from modules.mail_service import configure as configure_mail
 from modules.security import cleanup_audit_rows, init_security, migrate_security, write_initial_credentials
 from modules.workspace_settings import bp as workspace_settings_bp, migrate as migrate_workspace, theme_context
@@ -221,6 +222,7 @@ app.register_blueprint(daily_projects_bp)
 app.register_blueprint(task_alerts_bp)
 app.register_blueprint(item_topics_bp)
 app.register_blueprint(email_bp)
+app.register_blueprint(password_recovery_bp)
 app.register_blueprint(workspace_settings_bp)
 app.context_processor(theme_context)
 init_pwa(app)

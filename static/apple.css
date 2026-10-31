@@ -443,6 +443,11 @@ tbody tr:hover td { background: var(--surface-inset); }
 .login-card h1 { font-size: 25px; line-height: 1.4; font-weight: 600; letter-spacing: -.04em; }
 .login-card .sub { color: var(--muted); font-size: 12px; margin: -10px 0 8px; }
 .login-card label { gap: 8px; font-size: 13px; }
+.login-card > form:not(.hidden) { display: grid; gap: 14px; }
+#recovery-title { text-align: center; margin: 0; font-size: 23px; }
+#recovery-message { color: var(--muted); font-size: 13px; line-height: 1.6; margin: 0; }
+#recovery-message.error { color: var(--red); }
+#login-success { color: var(--ux-teal); text-align: center; font-size: 13px; }
 .login-card input { min-height: 48px; padding: 12px 14px; background: var(--surface-inset) !important; }
 .login-password-field { display: grid; gap: 8px; min-width: 0; }
 .login-password-control { position: relative; min-width: 0; }

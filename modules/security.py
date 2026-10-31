@@ -26,6 +26,7 @@ AUDIT_FIELDS = {"id", "ids", "member_id", "record_type", "amount", "invoice_coun
                 "record_date", "status", "submitter_id", "permissions", "role",
                 "is_active", "type", "job_type", "group_ids", "project_ids"}
 LOGIN_ENDPOINTS = {"login", "client_api.login"}
+RECOVERY_ENDPOINTS = {"password_recovery.request_reset", "password_recovery.confirm_reset"}
 _audit_lock = threading.Lock()
 _audit_rate = {}
 
@@ -228,7 +229,7 @@ def init_security(app):
         unsafe = request.method not in SAFE_METHODS
         if user and (unsafe or request.endpoint in AUDITED_READS) and request.endpoint not in ROUTINE_ACTIONS:
             _start_request_audit(user)
-        elif unsafe and request.endpoint not in LOGIN_ENDPOINTS and _limited_audit_event('anonymous'):
+        elif unsafe and request.endpoint not in (LOGIN_ENDPOINTS | RECOVERY_ENDPOINTS) and _limited_audit_event('anonymous'):
             current_app.logger.warning('未认证写请求已拒绝审计存储: %s', request.path)
         if unsafe:
             expected = session.get("csrf_token")
@@ -244,6 +245,7 @@ def init_security(app):
         native_client = request.headers.get("X-XTYF-Client-Protocol") == "1"
         if native_client and user is None and request.endpoint not in {
             "client_api.bootstrap", "client_api.login", "client_api.logout", "security.get_csrf",
+            "password_recovery.request_reset", "password_recovery.confirm_reset",
             "client_updates.updates", "client_updates.bundle_download",
         }:
             return _error("未登录", "authentication_required", 401)
@@ -282,6 +284,13 @@ def init_security(app):
             succeeded = response.status_code < 400 and isinstance(payload, dict) and payload.get('ok') is True
             if succeeded or _limited_audit_event('login_failure'):
                 _start_request_audit(current_user() if succeeded else None)
+        recovered_member_id = getattr(g, "recovered_member_id", None)
+        if recovered_member_id is not None:
+            # Successful email recovery is auditable even without a login session.
+            # Reuse an authenticated request's record and never store credentials.
+            if not getattr(g, "audit_id", None):
+                _start_request_audit(None)
+            g.audit_details["member_id"] = recovered_member_id
         audit_id = getattr(g, "audit_id", None)
         if audit_id:
             payload = response.get_json(silent=True) if response.is_json else None
