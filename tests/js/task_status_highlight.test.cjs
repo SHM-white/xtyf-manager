@@ -88,6 +88,36 @@ test("day-zero, finished and dependency labels stay readable without relying on 
   assert.equal(label(task({status:"已取消",days_left:0})), "");
 });
 
+test("deadline and dependency warnings both remain visible in each task view", () => {
+  const {get} = fixture();
+  const attention = get("taskAttentionBadge");
+  const samples = [
+    [task({status:"阻塞",days_left:-2,dependency_warnings:["待修复前置"]}), /逾期/],
+    [task({days_left:1,dependency_warnings:["待确认前置"]}), /临期/],
+    [task({days_left:0,dependency_warnings:["待确认前置"]}), /今日/],
+  ];
+  for (const [item, deadline] of samples) {
+    for (const compact of [true, false]) {
+      const labels = attention(item, compact);
+      assert.match(labels, deadline);
+      assert.match(labels, /依赖/);
+      assert.match(labels, /task-dependency/);
+    }
+    const views = [
+      get("taskCard")(item),
+      get("treeTaskCard")(item),
+      get("timelineTaskRow")(item, {start:1,end:20}),
+      get("dashboardTaskRow")(item),
+    ];
+    for (const html of views) {
+      assert.match(html, /task-dependency/, "missing dependency badge");
+      assert.match(html, /逾期|临期|今日|天/, "missing deadline label");
+    }
+  }
+  assert.equal(attention(task({status:"已完成",days_left:-2,dependency_warnings:["历史警告"]})), "");
+  assert.equal(attention(task({status:"已取消",days_left:0,dependency_warnings:["历史警告"]})), "");
+});
+
 test("exceptional states breathe at distinct strengths while routine tasks stay still", () => {
   const css = fs.readFileSync(path.join(path.resolve(__dirname, "../.."), "static", "task-center.css"), "utf8").replace(/\r\n/g, "\n");
   const legacy = fs.readFileSync(path.join(path.resolve(__dirname, "../.."), "static", "collaboration.css"), "utf8");

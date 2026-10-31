@@ -110,10 +110,12 @@ function taskHighlightClasses(task) {
   ].filter(Boolean).join(" ");
 }
 function taskAttentionBadge(task, compact = false) {
-  if (isOverdue(task)) return badge(compact ? "逾期" : daysLeftText(task), daysLeftClass(task));
-  if (isDueSoon(task)) return badge(compact ? (task.days_left === 0 ? "今日" : "临期") : daysLeftText(task), daysLeftClass(task));
-  if (!isFinishedTask(task) && task.dependency_warnings?.length) return badge(compact ? "依赖" : "依赖提醒", "task-dependency");
-  return "";
+  const labels = [];
+  if (isOverdue(task)) labels.push(badge(compact ? "逾期" : daysLeftText(task), daysLeftClass(task)));
+  else if (isDueSoon(task)) labels.push(badge(compact ? (task.days_left === 0 ? "今日" : "临期") : daysLeftText(task), daysLeftClass(task)));
+  if (!isFinishedTask(task) && task.dependency_warnings?.length)
+    labels.push(badge(compact ? "依赖" : "依赖提醒", "task-dependency"));
+  return labels.join("");
 }
 // Capped urgency scores: ownership 28, deadline 44, priority 20, state 8 (max 100).
 function taskResponsibilityWeight(task, memberId = null, teamTaskWeight = 0) {
