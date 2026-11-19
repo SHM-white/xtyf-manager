@@ -1,6 +1,8 @@
 "use strict";
 
 const SPECIALTY_STAGES = ["机械", "电控", "视觉"];
+const BOARD_VIEWS = ["person", "status", "specialty", "tree"];
+const FOCUS_LABELS = {mine: "我的待办", ongoing: "进行中任务", due7: "7 天内到期", overdue: "逾期任务"};
 function specialtyTaskStage(task) {
   if (Object.prototype.hasOwnProperty.call(task, "owner_stage")) return task.owner_stage;
   const owner = memberById(task.owner_id);
@@ -224,6 +226,8 @@ function renderLanes(tasks) {
 }
 function fillBoardFilters() {
   state.filters.project = activeCatalogFilter(state.projects, state.filters.project);
+  if (!state.filters.project && state.view === "specialty") state.view = "person";
+  if (!state.statuses.includes(state.filters.status)) state.filters.status = "";
   const project = document.getElementById("f-project"),
     status = document.getElementById("f-status");
   if (project) {
@@ -239,6 +243,10 @@ function fillBoardFilters() {
 function renderBoard() {
   const target = document.getElementById("board");
   if (!target) return;
+  const focusLabel = FOCUS_LABELS[state.filters.focus];
+  document.getElementById("task-focus-summary").hidden = !focusLabel;
+  document.getElementById("task-focus-label").textContent = focusLabel ? "工作台快捷筛选：" + focusLabel : "";
+  document.getElementById("task-filters-reset").disabled = !Object.values(state.filters).some(Boolean);
   if (typeof captureTreeView === "function") captureTreeView(target);
   document.querySelectorAll("#view-seg button").forEach((button) => {
     const selected = button.dataset.view === state.view;
@@ -265,19 +273,40 @@ function renderBoard() {
   }
   document.getElementById("match-count").textContent = `${new Set(tasks.map((task) => task.id)).size} 个匹配任务`;
 }
+
+function syncBoardQuery() {
+  const query = new URLSearchParams(location.search);
+  const {project, status, q, mine, focus} = state.filters;
+  const defaultView = project ? "specialty" : "person";
+  for (const [key, value] of Object.entries({view: state.view === defaultView ? "" : state.view,
+    project, status, q, mine: mine ? "1" : "", focus})) {
+    if (value) query.set(key, value);
+    else query.delete(key);
+  }
+  const encoded = query.toString(), search = encoded ? "?" + encoded : "";
+  if (search !== location.search) history.replaceState(null, "", location.pathname + search + location.hash);
+}
+
 function bindBoard() {
   const target = document.getElementById("board");
   if (!target) return;
-  const focus = new URLSearchParams(location.search).get("focus");
-  const labels = {mine: "我的待办", ongoing: "进行中任务", due7: "7 天内到期", overdue: "逾期任务"};
-  if (Object.hasOwn(labels, focus)) {
-    state.filters.focus = focus;
-    const hint = document.getElementById("task-focus-summary");
-    if (hint) {
-      hint.hidden = false;
-      document.getElementById("task-focus-label").textContent = "工作台快捷筛选：" + labels[focus];
-    }
-  }
+  const query = new URLSearchParams(location.search);
+  const view = query.get("view"), focus = query.get("focus");
+  const search = document.getElementById("f-q"), mine = document.getElementById("f-mine");
+  Object.assign(state.filters, {
+    project: query.get("project") || "",
+    status: query.get("status") || "",
+    q: (query.get("q") || "").slice(0, search.maxLength).trim(),
+    mine: query.get("mine") === "1",
+    focus: Object.hasOwn(FOCUS_LABELS, focus) ? focus : "",
+  });
+  state.view = BOARD_VIEWS.includes(view) ? view : state.filters.project ? "specialty" : "person";
+  search.value = state.filters.q;
+  mine.checked = state.filters.mine;
+  const applyFilters = () => {
+    renderBoard();
+    syncBoardQuery();
+  };
   [
     ["f-project", "project", "change"],
     ["f-status", "status", "change"],
@@ -286,22 +315,31 @@ function bindBoard() {
     document.getElementById(id)?.addEventListener(event, (e) => {
       state.filters[key] = e.target.value.trim();
       if (key === "project" && state.view !== "tree") state.view = state.filters.project ? "specialty" : state.view === "specialty" ? "person" : state.view;
-      renderBoard();
+      applyFilters();
     }),
   );
-  document.getElementById("f-mine")?.addEventListener("change", (event) => {
+  mine.addEventListener("change", (event) => {
     state.filters.mine = event.target.checked;
-    renderBoard();
+    applyFilters();
+  });
+  document.getElementById("task-focus-clear").addEventListener("click", () => {
+    state.filters.focus = "";
+    search.focus();
+    applyFilters();
+  });
+  document.getElementById("task-filters-reset").addEventListener("click", () => {
+    Object.assign(state.filters, {project: "", status: "", q: "", mine: false, focus: ""});
+    search.value = "";
+    mine.checked = false;
+    fillBoardFilters();
+    search.focus();
+    applyFilters();
   });
   document.getElementById("view-seg")?.addEventListener("click", (event) => {
     const button = event.target.closest("button[data-view]");
     if (!button) return;
     state.view = button.dataset.view;
-    document.querySelectorAll("#view-seg button").forEach((item) => {
-      item.classList.toggle("active", item === button);
-      item.setAttribute("aria-pressed", String(item === button));
-    });
-    renderBoard();
+    applyFilters();
   });
   target.addEventListener("click", (event) => {
     const laneToggle = event.target.closest('[data-lane-tasks]');

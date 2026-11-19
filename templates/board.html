@@ -26,7 +26,7 @@
 {% include '_daily_projects_content.html' %}
 {% else %}
 <section class="stats" id="stats" aria-label="任务统计"></section>
-<p id="task-focus-summary" class="task-focus-summary" hidden><span id="task-focus-label"></span> <a href="{{ url_for('tasks', type='vehicle') }}">清除快捷筛选</a></p>
+<p id="task-focus-summary" class="task-focus-summary" hidden><span id="task-focus-label"></span> <button class="btn ghost sm" id="task-focus-clear" type="button">清除快捷筛选</button></p>
 <section class="toolbar">
   <div class="seg" id="view-seg">
     <button type="button" data-view="person" class="active" aria-pressed="true">按人</button>
@@ -36,8 +36,9 @@
   </div>
   <label class="toolbar-field"><span>造车组别</span><select id="f-project"><option value="">全部组别</option></select></label>
   <label class="toolbar-field"><span>状态</span><select id="f-status"><option value="">全部状态</option></select></label>
-  <input id="f-q" type="search" aria-label="搜索任务" placeholder="搜索任务 / 负责人 / 组别">
+  <input id="f-q" type="search" maxlength="120" aria-label="搜索任务" placeholder="搜索任务 / 负责人 / 组别">
   <label class="check"><input type="checkbox" id="f-mine"> 只看我的</label>
+  <button class="btn" id="task-filters-reset" type="button" disabled>清空筛选</button>
   <span id="match-count" class="hint" role="status">0 个匹配任务</span>
 </section>
 {% include "_task_state_legend.html" %}

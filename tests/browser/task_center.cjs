@@ -188,9 +188,35 @@ async function ready(page) { await page.locator('#task-create-panel[open][aria-b
     await page.waitForURL('**/tasks?type=vehicle&focus=due7');
     await page.locator('#task-focus-summary').filter({hasText:'7 天内到期'}).waitFor();
     assert.equal(await page.locator('#task-focus-summary').isVisible(),true);
-    await page.locator('#task-focus-summary a').click();
-    await page.waitForURL('**/tasks?type=vehicle');
+    const project = await page.locator('#f-project option').nth(1).getAttribute('value');
+    await page.locator('#f-project').selectOption(project);
+    await page.locator('#f-status').selectOption('未开始');
+    await page.locator('#f-q').fill('前置 B');
+    await page.locator('#f-mine').check();
+    await page.locator('[data-view="tree"]').click();
+    const filters = new URL(page.url()).searchParams;
+    assert.deepEqual(Object.fromEntries(filters), {
+      type:'vehicle',focus:'due7',project,status:'未开始',q:'前置 B',mine:'1',view:'tree',
+    });
+    await page.reload();
+    await page.locator('#view-seg [data-view="tree"][aria-pressed="true"]').waitFor();
+    assert.equal(await page.locator('#f-project').inputValue(),project);
+    assert.equal(await page.locator('#f-status').inputValue(),'未开始');
+    assert.equal(await page.locator('#f-q').inputValue(),'前置 B');
+    assert.equal(await page.locator('#f-mine').isChecked(),true);
+    await page.locator('#task-focus-clear').click();
     assert.equal(await page.locator('#task-focus-summary').isVisible(),false);
+    assert.equal(new URL(page.url()).searchParams.get('focus'),null);
+    assert.equal(await page.locator('#f-q').inputValue(),'前置 B');
+    await page.locator('#task-filters-reset').click();
+    assert.deepEqual(Object.fromEntries(new URL(page.url()).searchParams),{type:'vehicle',view:'tree'});
+    assert.equal(await page.locator('#f-project').inputValue(),'');
+    assert.equal(await page.locator('#f-status').inputValue(),'');
+    assert.equal(await page.locator('#f-q').inputValue(),'');
+    assert.equal(await page.locator('#f-mine').isChecked(),false);
+    await page.goBack();
+    await page.waitForURL(base+'/');
+    checks.push('board link restores group, status, search, ownership and view; clearing preserves browser history');
     checks.push('dashboard preview reuses task edit and refreshes its card; stat links preserve and clear scope');
     await page.goto(base+'/');
 
