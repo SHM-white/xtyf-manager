@@ -50,7 +50,7 @@
     return `<article class="asset-card asset-unit-row"><label class="asset-unit-check"><input type="checkbox" data-unit-select="${u.id}" ${selected.has(u.id)?'checked':''} aria-label="选择 ${esc(u.item_name)} U:${u.id}"><span>选择</span></label><div class="asset-unit-identity"><h3>${esc(u.item_name)} <span class="asset-muted">U:${u.id}</span></h3><p>${esc(u.serial?'SN '+u.serial:'未填写厂家 SN')}</p><p class="asset-unit-meta">${esc(u.campus_name)} · ${esc(u.location||'未填写存放位置')}</p></div><div class="asset-unit-meta"><strong>${esc(state||'待核对')}</strong><p>${esc(u.keeper_name||'仓库保管')} · ${esc(labels[u.health]||u.health)}</p>${u.object_id?`<p>安装于 ${esc(u.object_name)} ${esc(u.position)}</p>`:''}${u.receiver_id?`<p>待 ${esc(receiver?.name||'成员 #'+u.receiver_id)} 接收</p>`:''}</div><div class="asset-actions">${quick?btn(quick,actions[quick],u.id,'data-unit-quick="true"'):''}${btn('history','查看记录',u.id)}</div></article>`;
   }
   async function show(id=null,unitId=null,own=false){
-    if(embedded&&id){location.href='/assets/detail?id='+encodeURIComponent(id);return;}
+    if(embedded&&id){location.href=core.itemDetailUrl(id);return;}
     const scanner=window.AssetScan?.dialog;
     if(scanner?.open){
       const closed=new Promise(resolve=>scanner.addEventListener('close',resolve,{once:true}));
@@ -89,7 +89,7 @@
 
       canManage=data.can_manage;
       $('asset-unit-campus').innerHTML=options(core.catalog.campuses,$('asset-unit-campus').value,'全部校区');
-      $('asset-unit-content').innerHTML=`<div class="asset-heading asset-unit-list-heading"><div><h3>实物清单</h3>${item?`<p class="asset-muted"><a href="/assets/detail?id=${item.id}">查看物料详情与全部流水</a> · 每件实物单独追踪</p>`:'<p class="asset-muted">行内借还只操作当前实物，批量操作只处理已选清单。</p>'}</div>${data.can_manage&&item?`<div class="asset-actions">${scanBtn('receive','扫码收货')}${btn('receive','手工登记实物')}</div>`:''}</div>`+
+      $('asset-unit-content').innerHTML=`<div class="asset-heading asset-unit-list-heading"><div><h3>实物清单</h3>${item?`<p class="asset-muted"><a href="${esc(core.itemDetailUrl(item.id))}">查看物料详情与全部流水</a> · 每件实物单独追踪</p>`:'<p class="asset-muted">行内借还只操作当前实物，批量操作只处理已选清单。</p>'}</div>${data.can_manage&&item?`<div class="asset-actions">${scanBtn('receive','扫码收货')}${btn('receive','手工登记实物')}</div>`:''}</div>`+
         `<div class="asset-actions" aria-label="扫码办理实物业务">${mine?'':scanBtn('borrow','扫码借用')}${scanBtn('return','扫码归还')}${scanBtn('move','扫码移动')}</div>`+
         (rows.length?'<div class="asset-unit-list">'+rows.map(renderUnit).join('')+'</div>':`<div class="asset-empty"><h3>${mine?'暂无借用或待接收实物':'当前校区暂无实物记录'}</h3><p>${mine?'借用或收到移交后，实物会出现在这里。':data.can_manage&&item?'新设备到货后，点击「新增实物 / 批量建档」登记。':'可切换校区查看其他实物。'}</p></div>`)+
         core.renderPager('units',page,data.total,data.per_page||perPage);
