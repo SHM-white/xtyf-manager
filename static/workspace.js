@@ -16,22 +16,31 @@ document.addEventListener('DOMContentLoaded', () => {
   window.addEventListener('resize', () => {
     if (window.innerWidth > 850) setOpen(false);
   });
-  // The task pages load app.js, which already manages this badge. Other pages do not.
-  const badge = document.getElementById('fundsPendingBadge');
-  if (badge && typeof window.refreshFundsBadge !== 'function') {
-    const updateBadge = async () => {
-      if (document.hidden) return;
-      try {
-        const response = await BusinessUI.fetch('/funds/api/pending_review', {credentials: 'same-origin'});
-        if (!response.ok) throw new Error('pending review unavailable');
+  const pendingLink = document.getElementById('fundsPendingBadge');
+  if (!pendingLink) return;
+  const badge = pendingLink.querySelector('.nav-badge');
+  let request = 0;
+  const updateBadge = async () => {
+    if (document.hidden) return;
+    const own = ++request;
+    let count = 0;
+    try {
+      const response = await BusinessUI.fetch('/funds/api/pending_review', {credentials: 'same-origin'});
+      if (response.ok) {
         const data = await response.json();
-        badge.textContent = data.count > 0 ? String(data.count) : '0';
-        badge.style.display = data.code === 0 && data.count > 0 ? '' : 'none';
-      } catch (_) {
-        badge.style.display = 'none';
+        if (data.code === 0 && Number.isSafeInteger(data.count) && data.count > 0) count = data.count;
       }
-    };
-    updateBadge();
-    setInterval(updateBadge, 30000);
-  }
+    } catch (_) {
+      // A failed read must not display an outdated count.
+    }
+    if (own !== request) return;
+    badge.textContent = String(count);
+    pendingLink.setAttribute('aria-label', '待审核资金记录，' + count + ' 条');
+    if (!count && document.activeElement === pendingLink) pendingLink.previousElementSibling.focus();
+    pendingLink.hidden = !count;
+  };
+  window.refreshFundsBadge = updateBadge;
+  updateBadge();
+  setInterval(updateBadge, 30000);
+  document.addEventListener('visibilitychange', updateBadge);
 });

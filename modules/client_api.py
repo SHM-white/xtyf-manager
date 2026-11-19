@@ -41,6 +41,7 @@ def create_client_blueprint(authenticate, statuses, priorities):
             assets_enabled=True,
             asset_units_enabled=True,
             asset_intake_enabled=True,
+            funds_review_filters=True,
             authenticated=user is not None,
             user=public_user,
             me=public_user,
