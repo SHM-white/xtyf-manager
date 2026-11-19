@@ -43,11 +43,14 @@
 
   <div class="tab-content">
     <div class="tab-pane fade show active" id="t-records">
-      <div class="filter-bar">
+      <form id="funds-filters" class="filter-bar">
         <div class="row g-2 align-items-end">
           <div class="col-lg-2 col-md-4 col-6">
             <label class="form-label" for="ft">类型</label>
             <select class="form-select form-select-sm" id="ft"><option value="">全部</option><option value="进">进账</option><option value="出">支出</option></select></div>
+          <div class="col-lg-2 col-md-4 col-6">
+            <label class="form-label" for="freview">审核状态</label>
+            <select class="form-select form-select-sm" id="freview"><option value="">全部状态</option><option value="pending">待审核</option><option value="reviewed">已审核</option></select></div>
           <div class="col-lg-2 col-md-4 col-6">
             <label class="form-label" for="fkw">关键字</label>
             <input class="form-control form-control-sm" id="fkw" placeholder="来源/去向/人员..."></div>
@@ -59,12 +62,12 @@
             <label class="form-label" for="fdf">起始</label><input type="date" class="form-control form-control-sm" id="fdf"></div>
           <div class="col-lg-2 col-md-3 col-6">
             <label class="form-label" for="fdt">截止</label><input type="date" class="form-control form-control-sm" id="fdt"></div>
-          <div class="col-lg-2 col-md-6 col-12 d-flex gap-1">
-            <button class="btn btn-primary btn-sm flex-fill" onclick="reload()">筛选</button>
-            <button class="btn btn-outline-secondary btn-sm flex-fill" onclick="resetF()">重置</button>
+          <div class="col-12 d-flex gap-2 justify-content-end">
+            <button type="submit" class="btn btn-primary btn-sm">筛选</button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="resetF()">重置</button>
             </div>
         </div>
-      </div>
+      </form>
       <div class="card">
         <div class="card-header d-flex justify-content-between align-items-center">
           <span>资金记录</span><span class="text-muted small" id="rcnt" aria-live="polite"></span></div>
@@ -76,7 +79,7 @@
             <th>类别</th><th>来源/去向</th><th>申请人</th><th>发票</th><th>处理人</th>
             <th style="cursor:pointer" onclick="setSort('record_date')">日期</th><th>审核</th><th>备注</th><th>操作</th>
           </tr></thead><tbody id="tbody"></tbody></table>
-          <div class="empty-state" id="empty" style="display:none"><i class="bi bi-inbox" style="font-size:42px;"></i><p>暂无记录，请添加数据</p></div>
+          <div class="empty-state" id="empty" style="display:none"><i class="bi bi-inbox" style="font-size:42px;"></i><p id="funds-empty-message">暂无记录，请添加数据</p></div>
         </div>
       </div>
     </div>
@@ -184,7 +187,8 @@
 window.XTYF_USER = {
   name: {{ me.name | tojson }},
   username: {{ me.username | tojson }},
-  canReview: {{ can_review | tojson }}
+  canReview: {{ can_review | tojson }},
+  reviewFilters: {{ funds_review_filters | tojson }}
 };
 </script>
 <script src="{{ url_for('static', filename='workspace.js') }}"></script>

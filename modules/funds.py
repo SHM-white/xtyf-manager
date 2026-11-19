@@ -305,48 +305,55 @@ def _funds_guard():
 def index():
     return render_template("funds.html", me=current_user(), page="funds",
                            role_names={"admin": "超级管理员", "manager": "项管", "member": "成员"},
-                           can_review=can_review())
+                           can_review=can_review(), funds_review_filters=True)
 
 
-# ==================== 记录查询 API（筛选：类型/关键字/金额范围/日期；可排序）====================
-@funds_bp.route("/api/records", methods=["GET"])
-def get_records():
-    conn = get_funds_db()
-    q = "SELECT * FROM records WHERE 1=1"
+def record_filter_query():
+    query = "SELECT * FROM records WHERE 1=1"
     params = []
 
-    v = request.args.get("record_type", "").strip()
-    if v:
-        q += " AND record_type=?"
-        params.append(v)
-    v = request.args.get("category", "").strip()
-    if v:
-        q += " AND category=?"
-        params.append(v)
+    for field in ("record_type", "category"):
+        value = request.args.get(field, "").strip()
+        if value:
+            query += f" AND {field}=?"
+            params.append(value)
+    review = request.args.get("review_status", "").strip()
+    if review == "pending":
+        query += " AND review_status='待审核'"
+    elif review == "reviewed":
+        # Legacy rows also appear as reviewed when their status is empty.
+        query += " AND review_status IS NOT '待审核'"
+    elif review:
+        raise ValueError("审核状态筛选条件无效")
+
     kw = request.args.get("keyword", "").strip()
     if kw:
-        q += " AND (source_dest LIKE ? OR applicant LIKE ? OR handler LIKE ? OR notes LIKE ?)"
+        query += " AND (source_dest LIKE ? OR applicant LIKE ? OR handler LIKE ? OR notes LIKE ?)"
         params.extend([f"%{kw}%"] * 4)
-    for f in ["amount_min", "amount_max"]:
-        val = request.args.get(f, "").strip()
+    for field, op in (("amount_min", ">="), ("amount_max", "<=")):
+        val = request.args.get(field, "").strip()
         if val:
-            op = ">=" if "min" in f else "<="
-            q += f" AND amount_cents {op} ?"
             try:
-                numeric = to_cents(val)
-            except (TypeError, ValueError):
-                conn.close()
-                return jsonify({"code": 1, "msg": "金额筛选条件无效"}), 400
-            params.append(numeric)
-    for f, col in [("date_from", "record_date"), ("date_to", "record_date")]:
-        val = request.args.get(f, "").strip()
+                params.append(to_cents(val))
+            except (TypeError, ValueError) as exc:
+                raise ValueError("金额筛选条件无效") from exc
+            query += f" AND amount_cents {op} ?"
+    for field, op in (("date_from", ">="), ("date_to", "<=")):
+        val = request.args.get(field, "").strip()
         if val:
             if not valid_record_date(val):
-                conn.close()
-                return jsonify(code=1, msg='日期筛选条件无效（YYYY-MM-DD）'), 400
-            op = ">=" if "from" in f else "<="
-            q += f" AND {col} {op} ?"
+                raise ValueError("日期筛选条件无效（YYYY-MM-DD）")
+            query += f" AND record_date {op} ?"
             params.append(val)
+    return query, params
+
+
+@funds_bp.route("/api/records", methods=["GET"])
+def get_records():
+    try:
+        q, params = record_filter_query()
+    except ValueError as exc:
+        return jsonify(code=1, msg=str(exc)), 400
 
     sort_by = request.args.get("sort_by", "record_date").strip()
     sort_order = request.args.get("sort_order", "DESC").strip().upper()
@@ -358,8 +365,11 @@ def get_records():
     sort_order = "DESC" if sort_order != "ASC" else "ASC"
     q += f" ORDER BY {sort_by} {sort_order}"
 
-    records = [record_payload(r) for r in conn.execute(q, params).fetchall()]
-    conn.close()
+    conn = get_funds_db()
+    try:
+        records = [record_payload(r) for r in conn.execute(q, params).fetchall()]
+    finally:
+        conn.close()
     return jsonify({"code": 0, "data": records})
 
 
@@ -651,19 +661,15 @@ def pending_review():
 @funds_bp.route("/api/export")
 # ---- 导出 CSV（含审核状态列；utf-8-sig 防 Excel 中文乱码）----
 def export_csv():
+    try:
+        q, params = record_filter_query()
+    except ValueError as exc:
+        return jsonify(code=1, msg=str(exc)), 400
     conn = get_funds_db()
-    q = "SELECT * FROM records WHERE 1=1"
-    params = []
-    v = request.args.get("record_type", "").strip()
-    if v:
-        q += " AND record_type=?"
-        params.append(v)
-    kw = request.args.get("keyword", "").strip()
-    if kw:
-        q += " AND (source_dest LIKE ? OR applicant LIKE ? OR handler LIKE ? OR notes LIKE ?)"
-        params.extend([f"%{kw}%"] * 4)
-    q += " ORDER BY record_date DESC"
-    rows = conn.execute(q, params).fetchall()
+    try:
+        rows = conn.execute(q + " ORDER BY record_date DESC", params).fetchall()
+    finally:
+        conn.close()
 
     out = io.StringIO()
     w = csv.writer(out)
@@ -679,7 +685,6 @@ def export_csv():
     buf = io.BytesIO()
     buf.write(out.getvalue().encode("utf-8-sig"))
     buf.seek(0)
-    conn.close()
     return send_file(buf, mimetype="text/csv", as_attachment=True,
                      download_name=f'funds_{datetime.now():%Y%m%d}.csv')
 

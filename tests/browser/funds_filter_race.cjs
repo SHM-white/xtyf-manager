@@ -13,14 +13,48 @@ async function main(){
   async function post(url,data){const token=(await(await api.get('/api/csrf')).json()).csrf_token;const r=await api.post(url,{headers:{'X-CSRF-Token':token},data});assert.equal(r.status(),200,await r.text());return r.json();}
   await post('/api/client/login',{username:'admin',password:'browser-test-initial'});await post('/api/password',{old:'browser-test-initial',new:'Synthetic-funds-filter-2026'});
   for(const [name,engine] of [['chromium',chromium],['webkit',webkit]]){
+    async function makeRecord(notes,amount){
+      return post('/funds/api/records',{request_id:crypto.randomUUID(),record_type:'进',amount,record_date:'2026-10-27',notes});
+    }
+    const pending=await makeRecord('待审核 '+name,'12.34'),reviewed=await makeRecord('已审核 '+name,'56');
+    await post('/funds/api/records/'+reviewed.id+'/review',{version:reviewed.version});
     engineName=name;browser=await engine.launch({headless:true});
     const context=await browser.newContext({storageState:await api.storageState(),serviceWorkers:'block'});page=await context.newPage();
     await page.addInitScript(()=>addEventListener('pageshow',event=>{const events=JSON.parse(sessionStorage.getItem('synthetic-pageshow')||'[]');events.push({path:location.pathname,persisted:event.persisted});sessionStorage.setItem('synthetic-pageshow',JSON.stringify(events));}));
     const errors=[];page.on('pageerror',e=>errors.push(e.message));
+    await page.goto(base+'/');
+    const queue=page.getByRole('link',{name:'待审核资金记录，1 条'});
+    await queue.click();
+    await page.waitForURL('**/funds/?review_status=pending');
+    await page.locator('#tbody td').getByText('待审核 '+name,{exact:true}).waitFor();
+    assert.equal(await page.locator('#freview').inputValue(),'pending');
+    assert.equal(await page.locator('#tbody tr').count(),1);
+    assert.equal(await page.locator('#fundsPendingBadge').getAttribute('href'),'/funds/?review_status=pending');
+    const excluded=await api.get('/funds/api/export?review_status=pending&amount_min=13');
+    assert.equal((await excluded.text()).trim().split(/\r?\n/).length,1);
+    const csv=await api.get('/funds/api/export?review_status=pending&amount_min=12');
+    assert.equal(csv.ok(),true);
+    assert.match(await csv.text(),new RegExp('待审核 '+name));
+    assert.doesNotMatch(await csv.text(),new RegExp('已审核 '+name));
+    page.once('dialog',dialog=>dialog.accept());
+    await page.getByRole('button',{name:'审核',exact:true}).click();
+    await page.getByText('当前筛选下没有待审核记录。',{exact:true}).waitFor();
+    await page.locator('#fundsPendingBadge').waitFor({state:'hidden'});
+    const approved=await (await api.get('/funds/api/records/'+pending.id)).json();
+    assert.equal(approved.data.review_status,'已审核');
+    await page.locator('#freview').selectOption('reviewed');
+    await page.locator('#fkw').fill('待审核 '+name);
+    await page.locator('#fkw').press('Enter');
+    await page.locator('#tbody td').getByText('待审核 '+name,{exact:true}).waitFor();
+    assert.equal(await page.locator('#tbody tr').count(),1);
+    assert.equal(new URL(page.url()).searchParams.get('review_status'),'reviewed');
+    await page.getByRole('button',{name:'重置',exact:true}).click();
+    assert.equal(new URL(page.url()).searchParams.has('review_status'),false);
+    passed.push(name+': review shortcut, filtered CSV, approval removes the row and count, filter reset');
     await page.goto(base+'/funds/');await page.waitForFunction(()=>document.getElementById('funds-list-loading').hidden);
     const held=new Map();
     await page.route('**/funds/api/records?*',route=>{held.set(new URL(route.request().url()).searchParams.get('keyword')||'',route);});
-    async function query(keyword){await page.locator('#fkw').fill(keyword);await page.locator('button[onclick="reload()"]').first().click();await assertEventually(()=>held.has(keyword));}
+    async function query(keyword){await page.locator('#fkw').fill(keyword);await page.getByRole('button',{name:'筛选',exact:true}).click();await assertEventually(()=>held.has(keyword));}
     async function reply(keyword,id){const route=held.get(keyword);held.delete(keyword);await route.fulfill({contentType:'application/json',body:JSON.stringify({code:0,data:[{id,record_type:'进',amount:1,record_date:'2026-10-27',notes:keyword}]})}).catch(()=>{});}
     async function assertEventually(fn){for(let i=0;i<100;i++){if(fn())return;await new Promise(r=>setTimeout(r,20));}assert.ok(fn(),'request was not observed');}
     await query('first');await reply('first',111);await page.getByRole('cell',{name:'111',exact:true}).waitFor();
