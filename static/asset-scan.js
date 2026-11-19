@@ -425,7 +425,7 @@
       const entry={...value,key:'scan-'+(++nextEntry),checked:false,edited:false};
       packages.set(entry.key,entry);resolved=entry;queue();await editDraft([entry],item?.tracking==='unit'?'existing':'new');return;
     }
-    if(action==='details'){location.href='/assets/detail?id='+item.id;return;}
+    if(action==='details'){location.href=core.itemDetailUrl(item.id);return;}
     if(action==='unit-details'){await window.AssetUnits.showRecord(item.id,value.unit.id);return;}
     if(action==='create'){create(value);return;}
     if(action==='bind'){bind(value);return;}

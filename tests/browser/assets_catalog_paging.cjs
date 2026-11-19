@@ -16,12 +16,39 @@ async function main(){
   await post('/api/client/login',{username:'admin',password:'browser-test-initial'});
   await post('/api/password',{old:'browser-test-initial',new:'catalog-browser-password',confirm:'catalog-browser-password'});
   const category=(await post('/api/assets/catalog/categories',{request_id:crypto.randomUUID(),name:'合成整理类别'})).id;
+  const campus=(await post('/api/assets/catalog/campuses',{request_id:crypto.randomUUID(),name:'合成校区'})).id;
   const ids=[];
-  for(let i=1;i<=25;i++)ids.push((await post('/api/assets/catalog/items',{request_id:crypto.randomUUID(),name:'分页合成 '+String(i).padStart(2,'0'),specification:'合成规格',unit:'个',kind:'consumable',consumable_mode:'quantity'})).id);
+  for(let i=1;i<=25;i++)ids.push((await post('/api/assets/catalog/items',{request_id:crypto.randomUUID(),name:'分页合成 '+String(i).padStart(2,'0'),specification:'合成规格',unit:'个',kind:'consumable',consumable_mode:'quantity',
+    inventory:{campus_id:campus,quantity:1,version:0,reason:'合成库存'}})).id);
   async function ready(ui){await ui.locator('#asset-content[aria-busy=false]').waitFor();assert.equal(await ui.locator('#asset-status[data-state=error]').count(),0);}
   async function query(ui,value){await ui.locator('#asset-search-query').fill(value);await ui.locator('#asset-filter').evaluate(form=>form.requestSubmit());await ready(ui);}
   async function organize(ui){await ui.locator('#asset-categories').click();await ui.locator('[data-action=category-organize]').click();await ready(ui);await ui.locator('#asset-category-organizer').waitFor({state:'visible'});}
   async function jump(ui,p){const nav=ui.locator('[data-asset-pager=items]');await nav.locator('[data-asset-page-input]').fill(String(p));await nav.locator('[data-asset-page-input]').press('Enter');await ready(ui);}
+  async function checkReturnToList(ui,label){
+    const filter=ui.locator('#asset-filter'),nav=ui.locator('[data-asset-pager=items]');
+    await query(ui,'分页合成');
+    await filter.locator('[name=campus_id]').selectOption(String(campus));await ready(ui);
+    await filter.locator('[name=category]').selectOption('__uncategorized__');await ready(ui);
+    await ui.locator('[data-asset-view=quantity]').click();await ready(ui);
+    await jump(ui,2);
+    assert.equal(await nav.locator('[data-asset-page-input]').inputValue(),'2');
+    const name=await ui.locator('.asset-list-row h2 a').first().innerText();
+    const item=ui.getByRole('link',{name,exact:true});
+    await item.click();await ui.locator('#asset-title').filter({hasText:name}).waitFor();
+    await ui.locator('#asset-back').click();await item.waitFor();await ready(ui);
+    assert.equal(await filter.locator('[name=q]').inputValue(),'分页合成');
+    assert.equal(await filter.locator('[name=campus_id]').inputValue(),String(campus));
+    assert.equal(await filter.locator('[name=category]').inputValue(),'__uncategorized__');
+    assert.equal(await ui.locator('[data-asset-view=quantity]').getAttribute('aria-pressed'),'true');
+    assert.equal(await nav.locator('[data-asset-page-input]').inputValue(),'2');
+    await nav.locator('[data-asset-page-size]').selectOption('50');await ready(ui);
+    await item.click();await ui.locator('#asset-title').filter({hasText:name}).waitFor();
+    await ui.locator('[data-asset-nav=all]').click();await item.waitFor();
+    assert.equal(await nav.locator('[data-asset-page-size]').inputValue(),'50');
+    await nav.locator('[data-asset-page-size]').selectOption('20');await ready(ui);
+    await ui.locator('#asset-filter-reset').click();await ready(ui);
+    passed.push(label+': detail return restores warehouse search, campus, category, view and pagination');
+  }
   async function checkPager(ui){
     const nav=ui.locator('[data-asset-pager=items]');
     assert.equal(await ui.locator('[data-category-item]').count(),20);
@@ -145,7 +172,7 @@ async function main(){
   const engines=[['chromium',chromium,{viewport:{width:1280,height:900}}],['webkit',webkit,devices['iPhone 13']]];
   for(const [label,engine,options] of engines){
     engineName=label;browser=await engine.launch();const context=await browser.newContext({...options,storageState:await api.storageState()});page=await context.newPage();page.setDefaultTimeout(15000);page.on('pageerror',e=>errors.push(e.message));
-    captureLabels();await page.goto(base+'/assets');await ready(page);await checkCategories(page,label);await checkBulkPdf(page,label);
+    captureLabels();await page.goto(base+'/assets');await ready(page);await checkReturnToList(page,label);await checkCategories(page,label);await checkBulkPdf(page,label);
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true,'inventory and pager stay inside viewport');
     await page.locator('[data-asset-pager=items]').scrollIntoViewIfNeeded();await page.screenshot({path:path.join(output,label+'.png')});
     // Isolate duplicate creation from the 25-row pagination fixture.
@@ -179,7 +206,7 @@ async function main(){
       return {status:r.status(),headers,body:await r.text(),encoding:'text'};
     });
     await page.addInitScript(()=>{if(window===window.top)window.XTYFNative={invoke:(action,args)=>window.__catalogNative(action,args)};});
-    await page.goto('http://127.0.0.1:'+uiServer.address().port+'/#/assets');const frame=page.frameLocator('#page-host iframe');await ready(frame);await query(frame,'分页合成');await organize(frame);await checkPager(frame);
+    await page.goto('http://127.0.0.1:'+uiServer.address().port+'/#/assets');const frame=page.frameLocator('#page-host iframe');await ready(frame);await checkReturnToList(frame,label+'-local');await query(frame,'分页合成');await organize(frame);await checkPager(frame);
     await frame.locator('[data-category-item="'+ids[1]+'"]').check();await frame.locator('[data-action=category-assign]').click();await frame.locator('#asset-form [name=category_id]').selectOption(String(category));await frame.locator('#asset-save').click();await frame.locator('#asset-dialog').waitFor({state:'hidden'});await ready(frame);
     await checkBulkPdf(frame,label+'-local');
     assert.equal(await frame.locator('html').evaluate(el=>el.scrollWidth<=el.clientWidth+1),true);assert.deepEqual(remote,[],'packaged UI uses native API only');

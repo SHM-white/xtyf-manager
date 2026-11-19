@@ -4,12 +4,18 @@
   const $=id=>document.getElementById(id), esc=window.BusinessUI.escape;
   const params=new URLSearchParams(location.search), itemId=Number(params.get('id'))||null;
   const mine=params.get('view')==='mine',tableView=params.get('view')==='table'&&!itemId;
+  const inventoryView=!itemId&&!mine&&!tableView;
   const validAssetViews=['all','equipment','quantity','supply','attention'];
+  const pageOptions=[20,50,100], requestedSize=Number(params.get('per_page'));
+  const requestedPage=Number(params.get('page'));
   let assetView=validAssetViews.includes(params.get('type'))?params.get('type'):'all';
   const names={receive:'入库',borrow:'借用',return:'归还',consume:'领用',adjust:'盘点调整',transfer:'校区调拨',correct:'纠错',catalog:'目录维护',supply_status:'耗材状态'};
-  let catalog, detail, listing=[], loans=[], events=[], generation=0, listPage=1, loanPage=1, eventPage=1, eventCampus='',detailView='stock',mineView='units';
+  let listPage=Number.isSafeInteger(requestedPage)&&requestedPage>0?requestedPage:1;
+  let listCampus=params.get('campus_id')||'',listCategory=params.get('category')||'';
+  let catalog, detail, listing=[], loans=[], events=[], generation=0, loanPage=1, eventPage=1, eventCampus='',detailView='stock',mineView='units';
   let operation=null, pending=false, opener=null, serverReceivedAt=0;
-  const pageSizes={items:20,loans:20,events:20}, pagerHandlers=new Map(),categorySelection=new Map();
+  const pageSizes={items:pageOptions.includes(requestedSize)?requestedSize:20,loans:20,events:20};
+  const pagerHandlers=new Map(),categorySelection=new Map();
   let organizing=false;
   // Navigation may finish before a catalog response. Stop read chains in the
   // old document; keep writes and their durable recovery receipts untouched.
@@ -61,6 +67,26 @@
     document.dispatchEvent(new CustomEvent('asset-pending-cleared',{detail:saved}));
   }
   const dialog=$('asset-dialog'), form=$('asset-form'), filter=$('asset-filter');
+  filter.elements.q.value=(params.get('q')||'').slice(0,filter.elements.q.maxLength);
+  function listQuery(q=filter.elements.q.value){
+    const query=new URLSearchParams();
+    for(const [key,value] of Object.entries({q,campus_id:listCampus,category:listCategory,
+      type:assetView==='all'?'':assetView,page:listPage===1?'':listPage,per_page:pageSizes.items===20?'':pageSizes.items})){
+      if(value)query.set(key,value);
+    }
+    return query.toString();
+  }
+  let listContext=inventoryView||itemId?listQuery():'';
+  function listUrl(){return '/assets'+(listContext?'?'+listContext:'');}
+  function itemDetailUrl(id){
+    const query=new URLSearchParams(listContext);
+    query.set('id',String(id));
+    return '/assets/detail?'+query;
+  }
+  if(itemId){
+    $('asset-back').href=listUrl();
+    document.querySelector('[data-asset-nav="all"]').href=listUrl();
+  }
   const dialogOrigins=new WeakMap(),suspendedDialogs=new WeakSet();
   function showDialog(modal){
     if(modal.open)return;
@@ -175,7 +201,7 @@
     const control=(label,target,disabled=false,extra='')=>`<button type="button" class="btn" data-asset-page="${target}" ${disabled?'disabled':''} ${extra}>${label}</button>`;
     if(!catalog?.intake_enabled)return `<nav class="asset-pager" data-asset-pager="${esc(name)}" data-per-page="${perPage}" aria-label="分页">${page>1?control('上一页',page-1):''}<span>第 ${page} 页 · 共 ${total} 项</span>${page<last?control('下一页',page+1):''}<input type="hidden" data-asset-page-input max="${last}"></nav>`;
     const nearby=[];for(let p=Math.max(1,page-2);p<=Math.min(last,page+2);p++)nearby.push(control(String(p),p,false,`data-page-distance="${Math.abs(p-page)}" aria-label="第 ${p} 页"${p===page?' aria-current="page"':''}`));
-    return `<nav class="asset-pager" data-asset-pager="${esc(name)}" data-per-page="${perPage}" aria-label="分页"><span class="asset-pager-summary">共 ${total} 项 · 第 ${page} / ${last} 页</span><div class="asset-pager-pages">${control('首页',1,page===1)}${control('上一页',page-1,page===1)}${nearby.join('')}${control('下一页',page+1,page===last)}${control('末页',last,page===last)}</div><div class="asset-pager-options"><label>跳至<input type="number" inputmode="numeric" min="1" max="${last}" value="${page}" data-asset-page-input aria-label="跳转页码"></label>${control('跳转','jump')}<label>每页<select data-asset-page-size aria-label="每页条数">${[20,50,100].map(n=>`<option value="${n}"${n===perPage?' selected':''}>${n} 条</option>`).join('')}</select></label></div></nav>`;
+    return `<nav class="asset-pager" data-asset-pager="${esc(name)}" data-per-page="${perPage}" aria-label="分页"><span class="asset-pager-summary">共 ${total} 项 · 第 ${page} / ${last} 页</span><div class="asset-pager-pages">${control('首页',1,page===1)}${control('上一页',page-1,page===1)}${nearby.join('')}${control('下一页',page+1,page===last)}${control('末页',last,page===last)}</div><div class="asset-pager-options"><label>跳至<input type="number" inputmode="numeric" min="1" max="${last}" value="${page}" data-asset-page-input aria-label="跳转页码"></label>${control('跳转','jump')}<label>每页<select data-asset-page-size aria-label="每页条数">${pageOptions.map(n=>`<option value="${n}"${n===perPage?' selected':''}>${n} 条</option>`).join('')}</select></label></div></nav>`;
   }
   const registerPager=(name,handler)=>pagerHandlers.set(name,handler);
   const pageQuery=(name)=>catalog?.intake_enabled?'&per_page='+pageSizes[name]:'';
@@ -214,7 +240,7 @@
       (catalog.can_manage?button('edit-item','编辑物品',item.id):'')+(window.AssetLabels?button('print-item','打印物料标签',item.id):'');
     return `<article class="asset-card asset-list-row">
       <div class="asset-item-identity">${organizing?`<label class="asset-category-check"><input type="checkbox" data-category-item="${item.id}" ${categorySelection.has(item.id)?'checked':''} aria-label="选择 ${esc(item.name)} M:${item.id}"><span>选择</span></label>`:''}<span class="asset-item-icon">${itemIcon(item)}</span><div class="asset-item-copy">
-        <h2><a ${item.tracking==='unit'?'data-unit-model="'+item.id+'"':''} href="/assets/detail?id=${item.id}">${esc(item.name)}</a></h2>
+        <h2><a ${item.tracking==='unit'?'data-unit-model="'+item.id+'"':''} href="${esc(itemDetailUrl(item.id))}">${esc(item.name)}</a></h2>
         <p>${esc(item.specification)||'未填写规格'}</p><span class="asset-item-category">${esc(item.category)||'未分类'}</span>
       </div></div>
       <div class="asset-item-mode"><span class="asset-tag${!item.active?' asset-tag-inactive':supply?' asset-tag-supply':equipment?' asset-tag-equipment':''}">${type}${item.active?'':' · 停用'}</span><small>${hint}</small></div>
@@ -271,9 +297,10 @@
     }
   }
   function clearAssetFilters(){
+    clearTimeout(assetSearchTimer);
     filter.elements.q.value='';
-    filter.elements.campus_id.value='';
-    filter.elements.category.value='';
+    filter.elements.campus_id.value=listCampus='';
+    filter.elements.category.value=listCategory='';
     assetView='all';listPage=1;load();
     filter.elements.q.focus();
   }
@@ -319,8 +346,7 @@
       $('asset-categories').hidden=!c.can_manage;
       if(itemId||mine||tableView)organizing=false;
       filter.hidden=!!itemId||mine||tableView;
-      const campus=filter.elements.campus_id.value;
-      filter.elements.campus_id.innerHTML=options(c.campuses,campus,'全部校区');
+      filter.elements.campus_id.innerHTML=options(c.campuses,listCampus,'全部校区');
       if(itemId){
         const [d,l,e]=await Promise.all([api('items/'+itemId),api(`loans?item_id=${itemId}&page=${loanPage}${pageQuery('loans')}`),api(`events?item_id=${itemId}&page=${eventPage}&campus_id=${encodeURIComponent(eventCampus)}${pageQuery('events')}`)]);
         if(own!==generation)return; detail=d;
@@ -335,11 +361,23 @@
         $('asset-content').innerHTML='<p id="asset-mine-summary" role="status">正在读取全部校区借用汇总…</p>'+(window.AssetScan?'<div class="asset-mine-scan-actions asset-actions"><button type="button" class="btn" data-asset-scan-task="borrow">扫码借用</button><button type="button" class="btn" data-asset-scan-task="return">扫码归还</button></div>':'')+(window.AssetUnits?`<nav class="asset-detail-tabs" aria-label="借用记录类型"><button type="button" data-asset-mine-view="units" aria-pressed="${mineView==='units'}">单件设备与待接收</button><button type="button" data-asset-mine-view="quantity" aria-pressed="${mineView==='quantity'}">按数量借用 · ${l.total} 笔</button></nav>`:'')+`<section id="asset-quantity-loans" ${window.AssetUnits&&mineView!=='quantity'?'hidden':''}>${renderLoans(l)}</section>`;
         if(window.AssetUnits){await window.AssetUnits.loadMine();if(own!==generation)return;$('asset-mine-units').hidden=mineView!=='units';}
       }else{
-        const search=new URLSearchParams({q:filter.elements.q.value,campus_id:filter.elements.campus_id.value,category:filter.elements.category.value==='__uncategorized__'?'':filter.elements.category.value,view:assetView,page:String(listPage)});
-        if(c.intake_enabled){search.set('per_page',pageSizes.items);if(filter.elements.category.value==='__uncategorized__')search.set('uncategorized','1');}
+        listCampus=filter.elements.campus_id.value;
+        if(!c.intake_enabled){
+          pageSizes.items=20;
+          if(listCategory==='__uncategorized__')listCategory='';
+        }
+        const search=new URLSearchParams({q:filter.elements.q.value,campus_id:listCampus,
+          category:listCategory==='__uncategorized__'?'':listCategory,view:assetView,page:String(listPage)});
+        if(c.intake_enabled){search.set('per_page',pageSizes.items);if(listCategory==='__uncategorized__')search.set('uncategorized','1');}
         const data=await api('items?'+search);if(own!==generation)return;listing=data.items;listPage=data.page;
-        const category=filter.elements.category.value;
-        filter.elements.category.innerHTML=options([...(c.intake_enabled?[{id:'__uncategorized__',name:'未分类'}]:[]),...data.categories.map(v=>({id:v,name:v}))],category,'全部类别');
+        const categories=[...(c.intake_enabled?[{id:'__uncategorized__',name:'未分类'}]:[]),...data.categories.map(v=>({id:v,name:v}))];
+        if(listCategory&&!categories.some(category=>category.id===listCategory)){
+          categories.push({id:listCategory,name:listCategory});
+        }
+        filter.elements.category.innerHTML=options(categories,listCategory,'全部类别');
+        listContext=listQuery(search.get('q'));
+        const url=listUrl();
+        if(url!==location.pathname+location.search)history.replaceState(null,'',url+location.hash);
         updateAssetViews(data.summary);
         $('asset-result-summary').textContent=`共 ${data.total} 种物料${data.total?' · 第 '+data.page+' 页':''}`;
         const filtered=assetView!=='all'||filter.elements.q.value||filter.elements.campus_id.value||filter.elements.category.value;
@@ -790,13 +828,17 @@
     }
     const viewButton=event.target.closest('[data-asset-view]');
     if(viewButton){
+      clearTimeout(assetSearchTimer);
       assetView=viewButton.dataset.assetView;listPage=1;load();
     }else if(event.target.closest('#asset-clear-empty'))clearAssetFilters();
   });
   filter.addEventListener('change',e=>{
-    if(e.target.name==='campus_id'||e.target.name==='category'){listPage=1;load();}
+    if(e.target.name==='campus_id')listCampus=e.target.value;
+    else if(e.target.name==='category')listCategory=e.target.value;
+    else return;
+    clearTimeout(assetSearchTimer);listPage=1;load();
   });
-  window.AssetLedger={api,load,open,showDialog,input,reason,options,esc,campusFields,scanQuantity,renderPager:pager,registerPager,
+  window.AssetLedger={api,load,open,showDialog,input,reason,options,esc,campusFields,scanQuantity,itemDetailUrl,renderPager:pager,registerPager,
     rememberPending,forgetPending,setWriting(value){pending=value;showPending();},get writing(){return pending;},get saved(){return unresolved;},
     get catalog(){return catalog;},get blocked(){return !!unresolved||pending;},get detail(){return detail;},get listing(){return listing;}};
   window.addEventListener('load',updateCategorySelection,{once:true});
