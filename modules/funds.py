@@ -15,7 +15,7 @@ import csv
 import io
 import json
 import os
-from contextlib import closing, contextmanager
+from contextlib import closing, contextmanager, nullcontext
 from modules.input_validation import clean_text
 import sqlite3
 import tempfile
@@ -32,7 +32,7 @@ from modules.funds_revisions import migrate as migrate_funds_revisions
 from modules.funds_requests import migrate as migrate_funds_requests, valid_request_id, fingerprint
 from modules.task_validation import InvalidIdError, parse_id
 from modules.invoice_storage import InvoiceFileLock
-from modules import funds_ledger
+from modules import funds_ledger, funds_reimbursements
 
 # ---- 数据目录：默认 <项目>/data/funds，可用环境变量 FUNDS_DIR 覆盖 ----
 FUNDS_DIR = os.environ.get(
@@ -203,9 +203,8 @@ def personal_status(row):
 
 def personal_invoice_payments():
     with closing(get_funds_db()) as conn:
-        return {row['personal_invoice_key']: (row['applicant_id'], row['personal_paid_at'])
-                for row in conn.execute('SELECT personal_invoice_key,applicant_id,personal_paid_at '
-                                        'FROM records WHERE personal_invoice_key IS NOT NULL')}
+        return {row['invoice_key']: (row['applicant_id'], row['personal_paid_at'])
+                for row in funds_reimbursements.paid_invoices(conn)}
 
 
 def stats_payload(stats):
@@ -718,51 +717,143 @@ def refresh_personal_invoices():
     return jsonify(code=0, generation=generation, matches=matches)
 
 
+def payment_owner(record, member_id):
+    if record['applicant_id'] is not None:
+        if member_id is not None and parse_id(member_id, '申请人', False) != record['applicant_id']:
+            raise ValueError('请使用记录的原申请人')
+        return dict(applicant_id=record['applicant_id'], applicant=record['applicant'], self_funded=1)
+    member_id = parse_id(member_id, '申请人', False)
+    member = get_db().execute('SELECT name FROM members WHERE id=?', (member_id,)).fetchone()
+    if member is None:
+        raise ValueError('指定的申请人不存在')
+    return dict(applicant_id=member_id, applicant=member['name'], self_funded=1)
+
+
+@funds_bp.get('/api/records/<int:rid>/personal-invoices')
+def personal_invoice_choices(rid):
+    from modules.invoices import personal_invoice_catalog
+
+    user = current_user()
+    if not can_match_personal_invoices(user):
+        return jsonify(code=403, msg='无权核对自费发票'), 403
+    try:
+        with personal_invoice_catalog(user) as (generation, invoices), closing(get_funds_db()) as conn:
+            conn.execute('BEGIN')
+            record = conn.execute('SELECT * FROM records WHERE id=? AND record_type=?', (rid, '出')).fetchone()
+            if record is None:
+                return jsonify(code=1, msg='支出记录不存在'), 404
+            try:
+                owner = payment_owner(record, request.args.get('applicant_id'))
+            except ValueError as exc:
+                return jsonify(code=1, msg=str(exc)), 400
+            linked = {row['invoice_key']: row['record_id'] for row in funds_reimbursements.paid_invoices(conn)}
+            choices = []
+            for invoice in invoices:
+                key = invoice['personal_invoice_key']
+                cents = int(invoice['amount_cents'])
+                if invoice['submitter_id'] != owner['applicant_id'] or not 0 < cents <= record['amount_cents']:
+                    continue
+                if key in linked and linked[key] != rid:
+                    continue
+                choice = {key: invoice[key] for key in ('id', 'amount_cents', 'date', 'vendor', 'invoice_number', 'filename')}
+                choice['selected'] = linked.get(key) == rid
+                choices.append(choice)
+            choices.sort(key=lambda item: (not item['selected'], -int(item['amount_cents'])))
+            return jsonify(code=0, generation=generation, version=record['version'], data=choices)
+    except (OSError, RuntimeError, ValueError, sqlite3.Error) as exc:
+        current_app.logger.warning('加载报销候选发票失败: %s', type(exc).__name__)
+        return jsonify(code=1, msg='发票数据暂不可用，请稍后刷新'), 503
+
+
+@funds_bp.get('/api/records/<int:rid>/personal-reimbursement/history')
+def personal_reimbursement_history(rid):
+    if not can_match_personal_invoices(current_user()):
+        return jsonify(code=403, msg='无权查看个人报销操作记录'), 403
+    with closing(get_funds_db()) as conn:
+        return jsonify(code=0, data=funds_reimbursements.payment_history(conn, rid))
+
+
 @funds_bp.post('/api/records/<int:rid>/personal-reimbursement')
 def confirm_personal_reimbursement(rid):
-    from modules.invoices import personal_invoice_catalog, ensure_personal_invoice_key
+    from modules.invoices import personal_invoice_catalog, ensure_personal_invoice_keys
 
     user = current_user()
     if not can_match_personal_invoices(user):
         return jsonify(code=403, msg='无权确认个人报销'), 403
     data = request.get_json(silent=True) or {}
+    operation = data.get('operation', 'confirm')
+    if operation not in ('confirm', 'backfill', 'correct', 'revoke'):
+        return jsonify(code=1, msg='未知的个人报销操作'), 400
     try:
         expected = parse_id(data.get('version'), 'version', False)
-    except InvalidIdError as exc:
+        reason = clean_text(data.get('reason'), '操作原因', 500, required=operation != 'confirm')
+    except ValueError as exc:
         return jsonify(code=1, msg=str(exc)), 400
-    invoice_id = data.get('invoice_id')
-    if not isinstance(invoice_id, str) or not isinstance(data.get('generation'), str):
-        return jsonify(code=1, msg='请刷新并选择要核对的发票'), 400
+    paid_at = now_str() if operation == 'confirm' else data.get('paid_date')
+    if operation in ('backfill', 'correct') and (
+        not valid_record_date(paid_at) or paid_at > now_str()[:10]
+    ):
+        return jsonify(code=1, msg='请填写有效的实际付款日期，最晚为今天'), 400
+    invoice_ids = data.get('invoice_ids', [data.get('invoice_id')])
+    if operation != 'revoke':
+        if (not isinstance(invoice_ids, list) or not 1 <= len(invoice_ids) <= 100
+                or any(not isinstance(value, str) or not value or len(value) > 4096 for value in invoice_ids)
+                or len(set(invoice_ids)) != len(invoice_ids)
+                or not isinstance(data.get('generation'), str)):
+            return jsonify(code=1, msg='请刷新并选择 1 至 100 张不同的发票'), 400
+
+    messages = {'confirm': '已登记个人报销', 'backfill': '已补录历史报销',
+                'correct': '已更正个人报销', 'revoke': '已撤销报销登记'}
     try:
         # Lock order is invoices then funds. The payment has one authoritative
-        # commit, and an unused invoice key is safe to reuse after a failed write.
-        with personal_invoice_catalog(user) as (generation, invoices):
-            if generation != data['generation']:
+        # commit. Revocation only releases existing allocations in the ledger.
+        catalog = nullcontext((None, [])) if operation == 'revoke' else personal_invoice_catalog(user)
+        with catalog as (generation, invoices), closing(get_funds_db()) as conn, conn:
+            if operation != 'revoke' and generation != data['generation']:
                 return jsonify(code=1, msg='发票数据已更新，请刷新核对'), 409
-            invoice = next((item for item in invoices if item['id'] == invoice_id), None)
-            with closing(get_funds_db()) as conn, conn:
-                conn.execute('BEGIN IMMEDIATE')
-                row = conn.execute('SELECT * FROM records WHERE id=?', (rid,)).fetchone()
-                if row is None:
-                    return jsonify(code=1, msg='记录不存在'), 404
-                if row['version'] != expected or row['personal_paid_at']:
-                    return jsonify(code=1, msg='资金记录已变更，请刷新核对'), 409
-                if not row['self_funded'] or row['review_status'] != '已审核':
-                    return jsonify(code=1, msg='请先审核通过这笔自费支出'), 409
-                if (invoice is None or invoice['submitter_id'] != row['applicant_id']
-                        or invoice['amount_cents'] != str(row['amount_cents'])):
-                    return jsonify(code=1, msg='发票金额及提交人须与申请一致'), 409
-                key = ensure_personal_invoice_key(invoice_id)
-                if key is None:
+            conn.execute('BEGIN IMMEDIATE')
+            row = conn.execute('SELECT * FROM records WHERE id=?', (rid,)).fetchone()
+            if row is None:
+                return jsonify(code=1, msg='记录不存在'), 404
+            if row['version'] != expected or bool(row['personal_paid_at']) != (operation in ('correct', 'revoke')):
+                return jsonify(code=1, msg='资金记录或报销状态已变更，请刷新核对'), 409
+            if row['record_type'] != '出' or row['review_status'] not in ('已审核', '', None):
+                return jsonify(code=1, msg='请先审核通过这笔支出'), 409
+            if operation == 'confirm' and not row['self_funded']:
+                return jsonify(code=1, msg='历史支出请使用历史报销补录'), 409
+            if operation == 'revoke':
+                owner = funds_reimbursements.owner_after_revocation(conn, row)
+                funds_reimbursements.apply_payment(conn, row, user, operation, reason, None, owner, [])
+            else:
+                try:
+                    owner = payment_owner(row, data.get('applicant_id'))
+                except ValueError as exc:
+                    return jsonify(code=1, msg=str(exc)), 400
+                catalog_by_id = {item['id']: item for item in invoices}
+                selected = [catalog_by_id.get(invoice_id) for invoice_id in invoice_ids]
+                if any(item is None or item['submitter_id'] != owner['applicant_id'] for item in selected):
+                    return jsonify(code=1, msg='所选发票须属于同一申请人'), 409
+                cents = [int(item['amount_cents']) for item in selected]
+                if any(amount <= 0 for amount in cents) or sum(cents) != row['amount_cents']:
+                    return jsonify(code=1, msg='所选发票金额合计须等于该笔支出'), 409
+                keys = ensure_personal_invoice_keys(invoice_ids)
+                if keys is None:
                     return jsonify(code=1, msg='发票文件已变更，请刷新核对'), 409
-                if conn.execute('SELECT 1 FROM records WHERE personal_invoice_key=?', (key,)).fetchone():
-                    return jsonify(code=1, msg='该发票已经用于个人报销'), 409
-                conn.execute('UPDATE records SET personal_invoice_key=?, personal_paid_at=?, '
-                             'version=version+1 WHERE id=?', (key, now_str(), rid))
-    except (OSError, RuntimeError, ValueError, sqlite3.OperationalError) as exc:
+                linked = {item['invoice_key']: item['record_id'] for item in funds_reimbursements.paid_invoices(conn)}
+                if len(set(keys)) != len(keys) or any(key in linked and linked[key] != rid for key in keys):
+                    return jsonify(code=1, msg='发票重复或已用于另一笔个人报销'), 409
+                if (operation == 'correct' and paid_at == row['personal_paid_at'][:10]
+                        and set(keys) == {key for key, record_id in linked.items() if record_id == rid}):
+                    return jsonify(code=1, msg='发票和付款日期未变更'), 409
+                allocations = [(key, amount, item['invoice_number'] or item['filename'])
+                               for key, amount, item in zip(keys, cents, selected)]
+                funds_reimbursements.apply_payment(conn, row, user, operation, reason, paid_at, owner, allocations)
+    except (OSError, RuntimeError, ValueError, sqlite3.Error) as exc:
         current_app.logger.warning('个人报销登记暂不可用: %s', type(exc).__name__)
         return jsonify(code=1, msg='当前无法登记个人报销，请刷新台账后重试'), 503
-    return committed_response(dict(code=0, msg='已登记个人报销', version=expected + 1), rid)
+    if hasattr(g, 'audit_details'):
+        g.audit_details['reimbursement'] = {'record_id': rid, 'operation': operation}
+    return committed_response(dict(code=0, msg=messages[operation], version=expected + 1), rid)
 
 
 @funds_bp.route("/api/pending_review")

@@ -1140,20 +1140,24 @@ def personal_invoice_catalog(user):
         _invoice_lock.release()
 
 
-def ensure_personal_invoice_key(invoice_id):
-    """Store an identity that follows this PDF when normal invoice operations move it."""
-    path = _safe_join(invoice_id) if _is_safe_rel(invoice_id) else None
-    if not path or not os.path.isfile(path):
-        return None
+def ensure_personal_invoice_keys(invoice_ids):
+    """Store identities that follow these files when normal invoice operations move them."""
     meta = load_meta()
-    invoice = meta.get(invoice_id)
-    if invoice is None:
-        return None
-    key = invoice.get('personal_invoice_key')
-    if not key:
-        key = invoice['personal_invoice_key'] = uuid.uuid4().hex
+    keys = []
+    changed = False
+    for invoice_id in invoice_ids:
+        path = _safe_join(invoice_id) if _is_safe_rel(invoice_id) else None
+        invoice = meta.get(invoice_id)
+        if invoice is None or not path or not os.path.isfile(path):
+            return None
+        key = invoice.get('personal_invoice_key')
+        if not key:
+            key = invoice['personal_invoice_key'] = uuid.uuid4().hex
+            changed = True
+        keys.append(key)
+    if changed:
         save_meta(meta)
-    return key
+    return keys
 
 
 def _personal_view():

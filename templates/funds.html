@@ -188,6 +188,50 @@
   </div></div>
 </div>
 
+{% if can_match_personal_invoices %}
+<div class="modal fade" id="personalPayment" tabindex="-1" aria-labelledby="personalPaymentTitle">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <form id="personalPaymentForm" class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="personalPaymentTitle">个人报销</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="关闭"></button>
+      </div>
+      <div class="modal-body">
+        <p id="personalPaymentRecord"></p>
+        <div id="personalPaymentOwnerField" class="mb-3" hidden>
+          <label for="personalPaymentOwner" class="form-label">历史申请人</label>
+          <select id="personalPaymentOwner" class="form-select"></select>
+        </div>
+        <div id="personalPaymentDateField" class="mb-3" hidden>
+          <label for="personalPaymentDate" class="form-label">实际付款日期</label>
+          <input id="personalPaymentDate" type="date" class="form-control">
+        </div>
+        <div id="personalPaymentReasonField" class="mb-3" hidden>
+          <label for="personalPaymentReason" class="form-label">操作原因</label>
+          <textarea id="personalPaymentReason" class="form-control" rows="2" maxlength="500"></textarea>
+        </div>
+        <div class="d-flex gap-2 align-items-center mb-2">
+          <strong>发票</strong>
+          <button id="personalPaymentReload" type="button" class="btn btn-outline-secondary btn-sm">重新查找发票</button>
+          <span id="personalPaymentTotal" role="status"></span>
+        </div>
+        <div id="personalPaymentChoices" class="overflow-auto mb-3" style="max-height:16rem"></div>
+        <p id="personalPaymentError" class="text-danger" role="alert"></p>
+        <details id="personalPaymentHistory" hidden>
+          <summary>操作记录</summary>
+          <ol id="personalPaymentEvents" class="ps-3 mt-2"></ol>
+        </details>
+      </div>
+      <div class="modal-footer">
+        <button id="personalPaymentRevoke" type="button" class="btn btn-outline-danger" hidden>撤销报销登记</button>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+        <button id="personalPaymentSave" type="submit" class="btn btn-primary" disabled>保存</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
 <script src="/vendor/bootstrap/bootstrap.bundle.min.js"></script>
 
 <!-- ==================== 前端逻辑 ==================== -->
@@ -204,6 +248,7 @@ window.XTYF_USER = {
 <script src="{{ url_for('static', filename='money.js') }}"></script>
 <script src="{{ url_for('static', filename='funds-create.js') }}"></script>
 <script src="{{ url_for('static', filename='funds.js') }}"></script>
+{% if can_match_personal_invoices %}<script src="{{ url_for('static', filename='funds-reimbursements.js') }}"></script>{% endif %}
 <div id="funds-feedback" class="ux-toast" role="status" aria-live="polite" hidden></div>
 </body>
 </html>

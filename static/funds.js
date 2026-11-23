@@ -201,12 +201,14 @@ function reload(){
 }
 
 function renderPersonalReimbursement(record) {
-  if (!record.personal_status) return '—';
-  var badge = '<span class="'+(record.personal_paid_at ? 'badge-ok' : 'badge-pending')+'">'+escText(record.personal_status)+'</span>';
-  if (!personalCatalog || record.personal_paid_at) return badge;
+  var badge = record.personal_status
+    ? '<span class="'+(record.personal_paid_at ? 'badge-ok' : 'badge-pending')+'">'+escText(record.personal_status)+'</span>'
+    : '—';
+  var actions = window.FundsReimbursement?.actions(record) || '';
+  if (!personalCatalog || !record.self_funded || record.personal_paid_at) return badge + actions;
   var candidates = personalCatalog.matches[record.amount_cents] || [];
-  if (!candidates.length) return badge + '<small class="d-block">暂无同金额发票</small>';
-  return badge + '<details class="mt-1"><summary>同金额发票（'+candidates.length+' 张）</summary><ul class="ps-3 mb-0">'+candidates.map(function(invoice){
+  if (!candidates.length) return badge + '<small class="d-block">暂无同金额发票</small>' + actions;
+  return badge + actions + '<details class="mt-1"><summary>同金额发票（'+candidates.length+' 张）</summary><ul class="ps-3 mb-0">'+candidates.map(function(invoice){
     var url = '/invoices/file/'+invoice.id.split('/').map(encodeURIComponent).join('/');
     var owner = invoice.submitter_id ? invoice.submitter+' #'+invoice.submitter_id : '归属待确认';
     var description = [owner,
@@ -214,10 +216,6 @@ function renderPersonalReimbursement(record) {
     var action = '';
     if (invoice.paid) action = '<small class="d-block">已用于个人报销</small>';
     else if (invoice.submitter_id !== record.applicant_id) action = '<small class="d-block">提交人与申请人不一致</small>';
-    else if (record.review_status === '已审核') {
-      action = '<button type="button" class="btn btn-outline-primary btn-sm d-block" data-personal-invoice="'+escText(invoice.id)+
-        '" data-record-id="'+record.id+'" data-version="'+record.version+'" onclick="confirmPersonalReimbursement(this)">确认个人报销</button>';
-    }
     return '<li class="mb-1"><a href="'+escText(url)+'" target="_blank" rel="noopener">'+escText(description)+'</a>'+action+'</li>';
   }).join('')+'</ul></details>';
 }
@@ -238,25 +236,6 @@ async function refreshPersonalInvoices(button) {
   } finally {
     button.disabled = false;
     await reload();
-  }
-}
-
-async function confirmPersonalReimbursement(button) {
-  if (!personalCatalog || !confirm('确认款项已经付给申请人，并使用这张发票登记个人报销？')) return;
-  button.disabled = true;
-  try {
-    var response = await BusinessUI.fetch(API+'/'+button.dataset.recordId+'/personal-reimbursement', {
-      method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({
-        invoice_id:button.dataset.personalInvoice, version:Number(button.dataset.version), generation:personalCatalog.generation
-      })
-    });
-    var result = await response.json();
-    if (!response.ok || result.code !== 0) throw new Error(result.msg || '个人报销登记失败');
-    fundsToast(result.msg, result.ledger_sync === 'failed' ? 'error' : 'success');
-  } catch (error) {
-    fundsToast(error.message, 'error');
-  } finally {
-    await refreshPersonalInvoices(document.getElementById('refreshPersonalInvoices'));
   }
 }
 

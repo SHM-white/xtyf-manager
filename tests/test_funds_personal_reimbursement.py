@@ -1,12 +1,14 @@
 """Exercise ledger and invoice synchronization through their normal APIs."""
 from io import BytesIO
 import os
+import sqlite3
 import unittest
+from contextlib import closing
 from unittest.mock import patch
 from uuid import uuid4
 
 from test_tasks import app_module
-from modules import invoices
+from modules import funds, funds_revisions, invoices
 
 
 class TestPersonalReimbursement(unittest.TestCase):
@@ -132,6 +134,122 @@ class TestPersonalReimbursement(unittest.TestCase):
         all_invoices = self.admin.get('/invoices/api/invoices', query_string={'id': move['id']}).get_json()['data']
         self.assertEqual(all_invoices[0]['status'], '正在报销')
         self.assertEqual(self.other.get('/invoices/api/invoices', query_string=filter_args).get_json()['total'], 0)
+
+    def test_multiple_invoices_are_validated_and_corrections_release_old_links(self):
+        row = self.expense('0.30')
+        path = f"/funds/api/records/{row['id']}"
+        payment = path+'/personal-reimbursement'
+        first = self.invoice(self.applicant_id, '0.10')
+        second = self.invoice(self.applicant_id, '0.20')
+        replacement = self.invoice(self.applicant_id, '0.20')
+        unrelated = self.invoice(self.other_id, '0.20')
+        options = self.reviewer.get(path+'/personal-invoices').get_json()
+        self.assertEqual({item['id'] for item in options['data']}, {first, second, replacement})
+        decision = {'version': 1, 'generation': options['generation'], 'invoice_ids': [first, second]}
+        self.assertEqual(self.reviewer.post(payment, json=decision).status_code, 409)
+        self.assertEqual(self.reviewer.post(path+'/review', json={'version': 1}).status_code, 200)
+        decision['version'] = 2
+        for selection, expected in [([first, first], 400), ([first], 409), ([first, unrelated], 409)]:
+            self.assertEqual(self.reviewer.post(payment, json={**decision, 'invoice_ids': selection}).status_code, expected)
+
+        with closing(funds.get_funds_db()) as conn:
+            conn.execute("""CREATE TRIGGER fail_reimbursement_event BEFORE INSERT ON funds_personal_events
+                BEGIN SELECT RAISE(ABORT,'synthetic event write failure'); END""")
+            conn.commit()
+        try:
+            self.assertEqual(self.reviewer.post(payment, json=decision).status_code, 503)
+            unpaid = self.applicant.get(path).get_json()['data']
+            self.assertEqual((unpaid['personal_paid_at'], unpaid['version']), (None, 2))
+            self.assertTrue(set(funds.personal_invoice_payments()).isdisjoint({
+                invoices.load_meta()[invoice]['personal_invoice_key'] for invoice in (first, second)
+            }))
+        finally:
+            with closing(funds.get_funds_db()) as conn:
+                conn.execute('DROP TRIGGER fail_reimbursement_event')
+                conn.commit()
+
+        result = self.reviewer.post(payment, json=decision)
+        self.assertEqual(result.status_code, 200, result.get_json())
+        selected = self.reviewer.get(path+'/personal-invoices').get_json()['data']
+        self.assertEqual({item['id'] for item in selected if item['selected']}, {first, second})
+        other_application = self.expense('0.30')
+        other_path = f"/funds/api/records/{other_application['id']}"
+        self.assertEqual(self.reviewer.post(other_path+'/review', json={'version': 1}).status_code, 200)
+        self.assertNotIn(first, {item['id'] for item in self.reviewer.get(other_path+'/personal-invoices').get_json()['data']})
+        self.assertEqual(self.reviewer.post(other_path+'/personal-reimbursement', json=decision).status_code, 409)
+
+        correction = {**decision, 'operation': 'correct', 'version': 3, 'paid_date': '2026-11-22',
+                      'invoice_ids': [first, replacement], 'reason': '补交正确的票据'}
+        result = self.reviewer.post(payment, json=correction)
+        self.assertEqual(result.status_code, 200, result.get_json())
+        states = {item['id']: item['status'] for item in self.applicant.get(
+            '/invoices/api/invoices?scope=mine').get_json()['data']}
+        self.assertEqual(states, {first: '已个人报销', second: '未个人报销', replacement: '已个人报销'})
+        history = self.reviewer.get(payment+'/history').get_json()['data']
+        self.assertEqual([event['operation'] for event in history], ['correct', 'confirm'])
+        self.assertEqual(history[0]['actor_id'], self.reviewer_id)
+        self.assertEqual(history[0]['reason'], correction['reason'])
+        self.assertEqual(history[0]['after']['paid_at'], correction['paid_date'])
+        self.assertNotEqual(history[0]['before']['invoices'], history[0]['after']['invoices'])
+        options = self.reviewer.get(other_path+'/personal-invoices').get_json()['data']
+        self.assertEqual([item['id'] for item in options], [second])
+
+    def test_historical_backfill_requires_an_explicit_owner_date_and_reason(self):
+        amount = '56.78'
+        legacy = self.admin.post('/funds/api/records', json={
+            'request_id': uuid4().hex, 'record_type': '出', 'amount': amount,
+            'applicant': '旧账中的姓名', 'handler': '经手测试', 'source_dest': '旧账材料',
+            'record_date': '2026-11-20', 'invoice_count': 1,
+        }).get_json()
+        path = f"/funds/api/records/{legacy['id']}"
+        payment = path+'/personal-reimbursement'
+        self.assertEqual(self.admin.post(path+'/review', json={'version': 1}).status_code, 200)
+        balance = self.applicant.get('/funds/api/stats').get_json()['data']['balance']
+        invoice = self.invoice(self.applicant_id, amount)
+        self.invoice(self.other_id, amount)
+        self.assertEqual(self.reviewer.get(path+'/personal-invoices').status_code, 400)
+        result = self.reviewer.get(path+'/personal-invoices', query_string={'applicant_id': self.applicant_id}).get_json()
+        self.assertEqual([item['id'] for item in result['data']], [invoice])
+        entry = {'operation': 'backfill', 'version': 2, 'generation': result['generation'],
+                 'paid_date': '2026-11-20', 'invoice_ids': [invoice], 'applicant_id': self.applicant_id,
+                 'reason': '按旧付款凭证补录'}
+        for invalid in ({'reason': ''}, {'paid_date': '2099-01-01'}, {'applicant_id': None}):
+            self.assertEqual(self.reviewer.post(payment, json={**entry, **invalid}).status_code, 400)
+        self.assertEqual(self.admin.post(payment, json=entry).status_code, 403)
+        self.assertEqual(self.reviewer.post(payment, json=entry).status_code, 200)
+        reimbursed = self.applicant.get(path).get_json()['data']
+        self.assertEqual(reimbursed['applicant_id'], self.applicant_id)
+        self.assertEqual(reimbursed['personal_paid_at'], '2026-11-20')
+        self.assertEqual(self.applicant.get(payment+'/history').status_code, 403)
+        self.assertEqual(self.applicant.get('/funds/api/stats').get_json()['data']['balance'], balance)
+
+        revoke = {'operation': 'revoke', 'version': 3, 'reason': '旧付款凭证需复核'}
+        self.assertEqual(self.reviewer.post(payment, json={**revoke, 'reason': ' '}).status_code, 400)
+        self.assertEqual(self.reviewer.post(payment, json=revoke).status_code, 200)
+        restored = self.applicant.get(path).get_json()['data']
+        self.assertEqual((restored['applicant_id'], restored['applicant'], restored['self_funded']),
+                         (None, '旧账中的姓名', 0))
+        events = self.reviewer.get(payment+'/history').get_json()['data']
+        self.assertEqual([event['operation'] for event in events], ['revoke', 'backfill'])
+        self.assertEqual(events[0]['before']['invoices'][0]['amount'], amount)
+        self.assertEqual(events[0]['after']['invoices'], [])
+        self.assertEqual(self.applicant.get('/invoices/api/invoices?scope=mine').get_json()['data'][0]['status'],
+                         '未个人报销')
+
+    def test_migration_keeps_existing_single_invoice_allocations(self):
+        with closing(sqlite3.connect(':memory:')) as conn:
+            conn.executescript("""
+                CREATE TABLE funds_revision_migrations(version INTEGER PRIMARY KEY);
+                INSERT INTO funds_revision_migrations VALUES(1),(2);
+                CREATE TABLE records(id INTEGER PRIMARY KEY, amount_cents INTEGER, applicant_id INTEGER,
+                                     personal_invoice_key TEXT, personal_paid_at TEXT);
+                INSERT INTO records VALUES(12,3070,7,'legacy-invoice','2025-01-01 12:00:00');
+            """)
+            funds_revisions.migrate(conn)
+            funds_revisions.migrate(conn)
+            self.assertEqual(conn.execute('SELECT invoice_key,record_id,amount_cents FROM funds_personal_invoices').fetchall(),
+                             [('legacy-invoice', 12, 3070)])
+            self.assertEqual(conn.execute('SELECT personal_paid_at FROM records').fetchone()[0], '2025-01-01 12:00:00')
 
 
 if __name__ == '__main__':
